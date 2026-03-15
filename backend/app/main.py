@@ -3,10 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.router import api_router
 from app.core.database import engine, Base
-import app.models.core # Ensure core models are registered
+import app.models.core    # noqa: F401 — register models
+import app.models.admin   # noqa: F401
+import app.models.billing # noqa: F401
+import app.models.tenant  # noqa: F401
 
 # Create public tables if they don't exist
-app.models.core.Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

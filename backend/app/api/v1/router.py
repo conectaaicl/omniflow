@@ -1,3 +1,4 @@
+from fastapi import APIRouter
 from app.api.v1.endpoints import auth, tenants, webhooks, conversations, crm, admin, billing
 
 api_router = APIRouter()

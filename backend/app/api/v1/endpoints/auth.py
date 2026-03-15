@@ -1,3 +1,4 @@
+from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -37,4 +38,3 @@ def login_access_token(
         "token_type": "bearer",
     }
 
-from typing import Any
