@@ -1,139 +1,187 @@
-"use client";
+'use client'
 
-import React, { useState, useEffect } from "react";
-import { Plus, MoreHorizontal, DollarSign, User, TrendingUp, Filter } from "lucide-react";
-import { useBranding } from "@/components/providers/BrandingProvider";
-import api from "@/lib/api";
+import { useState, useEffect } from 'react'
+import { crmAPI } from '@/lib/api'
+import { Plus, DollarSign, User, TrendingUp, ChevronRight, ChevronLeft, Target, RefreshCw } from 'lucide-react'
+
+interface Contact { id: number; name: string; lead_score: number }
+interface Deal { id: number; title: string; value: number; status: string; contact: Contact }
+interface Stage { id: number; name: string; deals: Deal[] }
+
+function scoreColor(score: number) {
+  if (score >= 70) return 'text-green-400'
+  if (score >= 40) return 'text-amber-400'
+  return 'text-slate-500'
+}
+
+const STAGE_COLORS = ['#7c3aed', '#2563eb', '#0891b2', '#059669', '#d97706']
 
 export default function PipelinePage() {
-    const { branding } = useBranding();
-    const [stages, setStages] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+  const [stages, setStages] = useState<Stage[]>([])
+  const [loading, setLoading] = useState(true)
+  const [moving, setMoving] = useState<number | null>(null)
 
-    const fetchPipeline = async () => {
-        try {
-            const res = await api.get("/crm/pipeline");
-            setStages(res.data);
-        } catch (err) {
-            console.error("Fetch pipeline failed", err);
-        } finally {
-            setLoading(false);
-        }
-    };
+  const fetchPipeline = () => {
+    crmAPI.getPipeline()
+      .then((r) => setStages(r.data))
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }
 
-    useEffect(() => {
-        fetchPipeline();
-    }, []);
+  useEffect(() => { fetchPipeline() }, [])
 
-    const moveDeal = async (dealId: number, targetStageId: number) => {
-        try {
-            await api.patch(`/crm/deals/${dealId}/move?target_stage_id=${targetStageId}`);
-            fetchPipeline();
-        } catch (err) {
-            console.error("Move failed", err);
-        }
-    };
+  const moveDeal = async (dealId: number, targetStageId: number) => {
+    setMoving(dealId)
+    try {
+      await crmAPI.moveDeal(dealId, targetStageId)
+      fetchPipeline()
+    } catch (err) {
+      console.error('Move failed', err)
+    } finally {
+      setMoving(null)
+    }
+  }
 
-    if (loading) return <div className="p-8 animate-pulse text-foreground/30">Loading pipeline...</div>;
+  const totalValue = stages.reduce((sum, s) => sum + s.deals.reduce((a, d) => a + (d.value || 0), 0), 0)
+  const totalDeals = stages.reduce((sum, s) => sum + s.deals.length, 0)
 
-    return (
-        <div className="h-full flex flex-col max-w-[1400px] mx-auto w-full">
-            {/* Header */}
-            <div className="p-8 flex justify-between items-center bg-card/10 backdrop-blur-sm border-b border-border">
-                <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Sales Pipeline</h2>
-                    <p className="text-foreground/50">Manage your deals and track conversion stages.</p>
-                </div>
-                <div className="flex gap-4">
-                    <button className="px-4 py-2 rounded-lg bg-white/5 border border-border flex items-center gap-2 hover:bg-white/10 transition-colors">
-                        <Filter size={18} />
-                        Filters
-                    </button>
-                    <button className="px-6 py-2 rounded-lg bg-primary text-white font-bold flex items-center gap-2 hover:opacity-90 shadow-lg shadow-primary/20 transition-all">
-                        <Plus size={18} />
-                        Add Deal
-                    </button>
-                </div>
-            </div>
-
-            {/* Kanban Board */}
-            <div className="flex-1 overflow-x-auto p-8 flex gap-6 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-primary/5 via-transparent to-transparent">
-                {stages.map((stage) => (
-                    <div key={stage.id} className="w-80 flex-shrink-0 flex flex-col">
-                        {/* Stage Header */}
-                        <div className="flex justify-between items-center mb-4">
-                            <div className="flex items-center gap-2">
-                                <h3 className="font-bold text-sm uppercase tracking-widest text-foreground/70">{stage.name}</h3>
-                                <span className="bg-white/5 border border-border px-2 py-0.5 rounded-full text-[10px] font-mono">
-                                    {stage.deals.length}
-                                </span>
-                            </div>
-                            <MoreHorizontal size={18} className="text-foreground/30 cursor-pointer" />
-                        </div>
-
-                        {/* Deals List */}
-                        <div className="flex-1 space-y-4 overflow-y-auto">
-                            {stage.deals.map((deal: any) => (
-                                <div
-                                    key={deal.id}
-                                    className="p-5 rounded-2xl bg-card border border-border glass hover:border-primary/50 transition-all cursor-grab active:cursor-grabbing shadow-sm hover:shadow-lg hover:shadow-primary/5 group"
-                                >
-                                    <div className="flex justify-between items-start mb-3">
-                                        <h4 className="font-bold text-sm group-hover:text-primary transition-colors">{deal.title || `Deal with ${deal.contact.name}`}</h4>
-                                        <div className="px-1.5 py-0.5 rounded text-[8px] border border-emerald-500/30 text-emerald-500 bg-emerald-500/10 font-bold uppercase">
-                                            {deal.status}
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <div className="flex items-center gap-2 text-xs text-foreground/50">
-                                            <User size={14} className="text-primary/50" />
-                                            {deal.contact.name}
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <div className="flex items-center gap-1 text-emerald-500 font-bold">
-                                                <DollarSign size={14} />
-                                                {deal.value.toLocaleString()}
-                                            </div>
-                                            {deal.contact.lead_score > 70 && (
-                                                <div className="flex items-center gap-1 text-red-500 text-[10px] font-bold">
-                                                    <TrendingUp size={12} />
-                                                    PRIME
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Action Shortcuts (Hidden by default) */}
-                                    <div className="mt-4 pt-4 border-t border-white/5 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button
-                                            onClick={() => moveDeal(deal.id, stage.id + 1)}
-                                            className="flex-1 py-1 rounded-md bg-white/5 text-[10px] font-bold hover:bg-primary hover:text-white transition-all shadow-sm"
-                                        >
-                                            Next Stage
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-
-                            {/* Empty State placeholder for stage */}
-                            {stage.deals.length === 0 && (
-                                <div className="h-32 rounded-2xl border-2 border-dashed border-border/50 flex items-center justify-center text-foreground/20 italic text-xs">
-                                    Drop deals here
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                ))}
-
-                {/* Add New Stage Placeholder */}
-                <div className="w-80 flex-shrink-0 flex items-center justify-center border-2 border-dashed border-border/30 rounded-3xl h-fit py-12 text-foreground/30 hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer">
-                    <div className="text-center space-y-2">
-                        <Plus className="mx-auto" size={24} />
-                        <span className="text-sm font-bold uppercase tracking-wider">Add Stage</span>
-                    </div>
-                </div>
-            </div>
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="p-6 border-b border-white/5 flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Pipeline de Ventas</h1>
+          <p className="text-slate-400 text-sm mt-0.5">
+            {totalDeals} deals · <span className="text-green-400 font-medium">${totalValue.toLocaleString()}</span> valor total
+          </p>
         </div>
-    );
+        <button
+          onClick={fetchPipeline}
+          className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/5 text-slate-400 hover:text-white px-3 py-2 rounded-lg transition-all text-sm"
+        >
+          <RefreshCw size={13} />
+          Actualizar
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="flex items-center gap-2 text-slate-500">
+            <RefreshCw size={16} className="animate-spin" />
+            <span className="text-sm">Cargando pipeline...</span>
+          </div>
+        </div>
+      ) : stages.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <Target size={40} className="text-slate-700 mx-auto mb-3" />
+            <p className="text-slate-500">Sin etapas en el pipeline</p>
+            <p className="text-xs text-slate-700 mt-1">Configura tu pipeline en el backend</p>
+          </div>
+        </div>
+      ) : (
+        /* Kanban board */
+        <div className="flex-1 overflow-x-auto p-6">
+          <div className="flex gap-4 h-full min-h-[500px]" style={{ minWidth: `${stages.length * 288 + (stages.length - 1) * 16}px` }}>
+            {stages.map((stage, stageIdx) => {
+              const color = STAGE_COLORS[stageIdx % STAGE_COLORS.length]
+              const prevStage = stageIdx > 0 ? stages[stageIdx - 1] : null
+              const nextStage = stageIdx < stages.length - 1 ? stages[stageIdx + 1] : null
+
+              return (
+                <div key={stage.id} className="w-72 flex-shrink-0 flex flex-col">
+                  {/* Stage header */}
+                  <div className="flex items-center justify-between mb-3 px-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full" style={{ background: color }} />
+                      <span className="text-xs font-semibold text-white uppercase tracking-wide">{stage.name}</span>
+                      <span
+                        className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+                        style={{ background: `${color}20`, color }}
+                      >
+                        {stage.deals.length}
+                      </span>
+                    </div>
+                    <span className="text-xs text-slate-600">
+                      ${stage.deals.reduce((a, d) => a + (d.value || 0), 0).toLocaleString()}
+                    </span>
+                  </div>
+
+                  {/* Deals */}
+                  <div className="flex-1 space-y-3 overflow-y-auto">
+                    {stage.deals.length === 0 ? (
+                      <div
+                        className="h-24 rounded-xl border-2 border-dashed border-white/5 flex items-center justify-center text-xs text-slate-700"
+                      >
+                        Sin deals
+                      </div>
+                    ) : (
+                      stage.deals.map((deal) => (
+                        <div
+                          key={deal.id}
+                          className="bg-[#0d0d1a] border border-white/5 rounded-xl p-4 hover:border-white/10 transition-all group"
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <h4 className="text-sm font-medium text-white leading-tight">
+                              {deal.title || `Deal #${deal.id}`}
+                            </h4>
+                            {deal.contact.lead_score >= 70 && (
+                              <div className="flex items-center gap-0.5 text-green-400 shrink-0">
+                                <TrendingUp size={10} />
+                                <span className="text-[9px] font-bold">HOT</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <User size={10} className="text-slate-600" />
+                            <span className="text-xs text-slate-500 truncate">{deal.contact.name}</span>
+                            <span className={`ml-auto text-[10px] font-medium ${scoreColor(deal.contact.lead_score)}`}>
+                              {deal.contact.lead_score}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1 mb-3">
+                            <DollarSign size={11} className="text-green-400" />
+                            <span className="text-sm font-semibold text-green-400">
+                              {(deal.value || 0).toLocaleString()}
+                            </span>
+                          </div>
+
+                          {/* Move buttons (visible on hover) */}
+                          <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {prevStage && (
+                              <button
+                                onClick={() => moveDeal(deal.id, prevStage.id)}
+                                disabled={moving === deal.id}
+                                className="flex-1 flex items-center justify-center gap-1 py-1 rounded-md bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-[10px] transition-all disabled:opacity-40"
+                              >
+                                <ChevronLeft size={10} />
+                                {prevStage.name}
+                              </button>
+                            )}
+                            {nextStage && (
+                              <button
+                                onClick={() => moveDeal(deal.id, nextStage.id)}
+                                disabled={moving === deal.id}
+                                className="flex-1 flex items-center justify-center gap-1 py-1 rounded-md text-[10px] transition-all disabled:opacity-40"
+                                style={{ background: `${color}20`, color }}
+                              >
+                                {nextStage.name}
+                                <ChevronRight size={10} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }

@@ -1,156 +1,162 @@
-"use client";
+'use client'
 
-import React, { useState, useEffect } from "react";
-import { CreditCard, Check, Zap, Crown, ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
-import api from "@/lib/api";
+import { useState, useEffect } from 'react'
+import { billingAPI } from '@/lib/api'
+import { Check, ShieldCheck, ArrowRight, RefreshCw, CreditCard } from 'lucide-react'
 
 const PLANS = [
-    {
-        id: 1,
-        name: "Starter",
-        price: 29,
-        description: "Perfect for small businesses starting their automation journey.",
-        features: ["1,000 Contacts", "5,000 Messages/mo", "Basic AI Intent", "WhatsApp Integration"],
-        color: "bg-blue-500/10 text-blue-500"
-    },
-    {
-        id: 2,
-        name: "Pro",
-        price: 99,
-        description: "Scale your sales with advanced AI and higher limits.",
-        features: ["10,000 Contacts", "50,000 Messages/mo", "Advanced AI Scoring", "n8n Automation Builder", "Priority Support"],
-        color: "bg-primary/20 text-primary",
-        popular: true
-    },
-    {
-        id: 3,
-        name: "Enterprise",
-        price: 299,
-        description: "Full orchestration for large scale operations.",
-        features: ["Unlimited Contacts", "Unlimited Messages", "Custom AI Models", "Dedicated Support", "White-Label Reseller Option"],
-        color: "bg-emerald-500/10 text-emerald-500"
-    }
-];
+  {
+    id: 1,
+    name: 'Starter',
+    price: 29,
+    desc: 'Para pequeñas empresas iniciando su automatización.',
+    features: ['1,000 contactos', '5,000 mensajes/mes', 'IA básica', 'WhatsApp + Web', 'Soporte email'],
+    color: '#2563eb',
+  },
+  {
+    id: 2,
+    name: 'Pro',
+    price: 99,
+    desc: 'Escala tus ventas con IA avanzada y mayores límites.',
+    features: ['10,000 contactos', '50,000 mensajes/mes', 'Todos los canales', 'n8n incluido', 'IA avanzada', 'Soporte prioritario'],
+    color: '#7c3aed',
+    popular: true,
+  },
+  {
+    id: 3,
+    name: 'Enterprise',
+    price: 299,
+    desc: 'Orquestación total para operaciones a gran escala.',
+    features: ['Ilimitado', 'Mensajes ilimitados', 'White-label total', 'Instancias dedicadas', 'SLA 99.9%', 'Manager dedicado'],
+    color: '#059669',
+  },
+]
 
 export default function BillingPage() {
-    const [currentSub, setCurrentSub] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
-    const [processing, setProcessing] = useState<number | null>(null);
+  const [currentSub, setCurrentSub] = useState<{ plan?: string; current_period_end?: string } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [processing, setProcessing] = useState<number | null>(null)
 
-    useEffect(() => {
-        const fetchSub = async () => {
-            try {
-                const res = await api.get("/billing/current");
-                setCurrentSub(res.data);
-            } catch (err) {
-                console.error("Billing fetch failed", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchSub();
-    }, []);
+  useEffect(() => {
+    billingAPI.getCurrent()
+      .then((r) => setCurrentSub(r.data))
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [])
 
-    const handleSubscribe = async (planId: number) => {
-        setProcessing(planId);
-        try {
-            await api.post(`/billing/subscribe/${planId}`);
-            const res = await api.get("/billing/current");
-            setCurrentSub(res.data);
-        } catch (err) {
-            console.error("Subscription failed", err);
-        } finally {
-            setProcessing(null);
-        }
-    };
+  const handleSubscribe = async (planId: number) => {
+    setProcessing(planId)
+    try {
+      await billingAPI.subscribe(planId)
+      const r = await billingAPI.getCurrent()
+      setCurrentSub(r.data)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setProcessing(null)
+    }
+  }
 
-    if (loading) return <div className="p-8 text-foreground/30 animate-pulse font-bold tracking-tighter uppercase">Encrypting Billing Data...</div>;
+  return (
+    <div className="p-6 space-y-6 max-w-4xl">
+      <div>
+        <h1 className="text-2xl font-bold text-white">Planes y Suscripción</h1>
+        <p className="text-slate-400 text-sm mt-0.5">Elige el plan que mejor se ajuste a tu operación</p>
+      </div>
 
-    return (
-        <div className="p-8 space-y-12 max-w-6xl mx-auto">
-            {/* Header */}
-            <div className="text-center space-y-4">
-                <h2 className="text-4xl font-black tracking-tight uppercase italic">Subscription <span className="text-primary">& Plans</span></h2>
-                <p className="text-foreground/50 max-w-2xl mx-auto">Choose the tier that best fits your business orchestration needs. Upgrade or downgrade anytime.</p>
-            </div>
-
-            {/* Current Status */}
-            <div className="p-6 rounded-3xl bg-card border border-border glass flex items-center justify-between">
-                <div className="flex items-center gap-6">
-                    <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                        <ShieldCheck size={32} />
-                    </div>
-                    <div>
-                        <div className="text-[10px] font-bold uppercase tracking-widest text-foreground/30 mb-1">Current Plan Status</div>
-                        <div className="flex items-center gap-3">
-                            <h3 className="text-2xl font-bold">{currentSub?.plan || "No Active Plan"}</h3>
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-500 text-[10px] font-bold uppercase">Active</span>
-                        </div>
-                        {currentSub?.current_period_end && (
-                            <p className="text-xs text-foreground/40 mt-1">Renews on {new Date(currentSub.current_period_end).toLocaleDateString()}</p>
-                        )}
-                    </div>
-                </div>
-                <button className="px-6 py-2 rounded-xl bg-white/5 border border-border text-xs font-bold hover:bg-white/10 transition-all">
-                    Manage Payment Method
-                </button>
-            </div>
-
-            {/* Plans Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                {PLANS.map((plan) => (
-                    <div
-                        key={plan.id}
-                        className={`p-8 rounded-[2.5rem] bg-card border ${plan.popular ? 'border-primary shadow-2xl shadow-primary/10 scale-105' : 'border-border'} glass flex flex-col relative overflow-hidden group`}
-                    >
-                        {plan.popular && (
-                            <div className="absolute top-0 right-0 bg-primary text-white text-[10px] font-black uppercase px-4 py-2 rounded-bl-2xl">
-                                MOst Popular
-                            </div>
-                        )}
-
-                        <div className="space-y-4 mb-8">
-                            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${plan.color}`}>
-                                {plan.name} Tier
-                            </span>
-                            <div className="flex items-baseline gap-1">
-                                <span className="text-4xl font-black tracking-tighter italic">${plan.price}</span>
-                                <span className="text-foreground/30 text-sm font-bold uppercase tracking-widest">/mo</span>
-                            </div>
-                            <p className="text-xs text-foreground/50 leading-relaxed font-semibold">{plan.description}</p>
-                        </div>
-
-                        <div className="flex-1 space-y-4 mb-8">
-                            {plan.features.map((feature, i) => (
-                                <div key={i} className="flex items-start gap-2 text-xs font-semibold">
-                                    <Check size={14} className="text-emerald-500 mt-0.5" />
-                                    {feature}
-                                </div>
-                            ))}
-                        </div>
-
-                        <button
-                            onClick={() => handleSubscribe(plan.id)}
-                            disabled={currentSub?.plan === plan.name || processing !== null}
-                            className={`w-full py-4 rounded-2xl font-black uppercase tracking-widest text-sm flex items-center justify-center gap-2 transition-all ${currentSub?.plan === plan.name
-                                    ? 'bg-white/5 border border-border text-white/30 cursor-default'
-                                    : 'bg-primary text-white hover:opacity-90 shadow-lg shadow-primary/20 active:scale-95'
-                                }`}
-                        >
-                            {processing === plan.id ? (
-                                <Loader2 size={18} className="animate-spin" />
-                            ) : currentSub?.plan === plan.name ? (
-                                "Current Plan"
-                            ) : (
-                                <>
-                                    Acquire License
-                                    <ArrowRight size={18} />
-                                </>
-                            )}
-                        </button>
-                    </div>
-                ))}
-            </div>
+      {/* Current plan status */}
+      <div className="bg-[#0d0d1a] border border-white/5 rounded-2xl p-5 flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-4">
+          <div className="p-3 rounded-xl bg-violet-500/10">
+            <ShieldCheck size={22} className="text-violet-400" />
+          </div>
+          <div>
+            <p className="text-xs text-slate-500 mb-0.5">Plan actual</p>
+            {loading ? (
+              <div className="h-5 w-24 bg-white/5 rounded animate-pulse" />
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-white">{currentSub?.plan || 'Sin plan activo'}</span>
+                {currentSub?.plan && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-400 font-medium">
+                    Activo
+                  </span>
+                )}
+              </div>
+            )}
+            {currentSub?.current_period_end && (
+              <p className="text-xs text-slate-600 mt-0.5">
+                Renueva el {new Date(currentSub.current_period_end).toLocaleDateString('es')}
+              </p>
+            )}
+          </div>
         </div>
-    );
+        <button className="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/5 text-slate-400 hover:text-white px-4 py-2 rounded-lg transition-all text-sm">
+          <CreditCard size={13} />
+          Método de pago
+        </button>
+      </div>
+
+      {/* Plans */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {PLANS.map((plan) => {
+          const isCurrent = currentSub?.plan === plan.name
+          const isProcessing = processing === plan.id
+          return (
+            <div
+              key={plan.id}
+              className={`relative bg-[#0d0d1a] border rounded-2xl p-5 flex flex-col transition-all ${plan.popular ? 'border-violet-500/40 shadow-xl shadow-violet-500/10 scale-[1.02]' : 'border-white/5'}`}
+            >
+              {plan.popular && (
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-violet-600 to-purple-600 text-white text-[10px] font-bold px-4 py-1 rounded-full">
+                  Más Popular
+                </div>
+              )}
+
+              <div className="mb-4">
+                <div
+                  className="inline-block text-xs font-semibold px-2.5 py-1 rounded-full mb-3"
+                  style={{ background: `${plan.color}20`, color: plan.color }}
+                >
+                  {plan.name}
+                </div>
+                <div className="flex items-baseline gap-1 mb-2">
+                  <span className="text-3xl font-bold text-white">${plan.price}</span>
+                  <span className="text-slate-500 text-sm">/mes</span>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed">{plan.desc}</p>
+              </div>
+
+              <ul className="flex-1 space-y-2.5 mb-5">
+                {plan.features.map((f) => (
+                  <li key={f} className="flex items-center gap-2 text-xs text-slate-300">
+                    <Check size={12} className="shrink-0" style={{ color: plan.color }} />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+
+              <button
+                onClick={() => !isCurrent && handleSubscribe(plan.id)}
+                disabled={isCurrent || isProcessing || processing !== null}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-all disabled:cursor-not-allowed"
+                style={isCurrent
+                  ? { background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.3)' }
+                  : { background: `${plan.color}20`, color: plan.color, border: `1px solid ${plan.color}40` }
+                }
+              >
+                {isProcessing ? (
+                  <RefreshCw size={14} className="animate-spin" />
+                ) : isCurrent ? (
+                  'Plan actual'
+                ) : (
+                  <>Comenzar con {plan.name} <ArrowRight size={13} /></>
+                )}
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }

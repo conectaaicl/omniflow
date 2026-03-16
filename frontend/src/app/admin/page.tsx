@@ -1,144 +1,199 @@
-"use client";
+'use client'
 
-import React, { useState, useEffect } from "react";
-import { Shield, Users, Server, HardDrive, DollarSign, Activity, ChevronRight, Search } from "lucide-react";
-import api from "@/lib/api";
+import { useState, useEffect, useMemo } from 'react'
+import { adminAPI } from '@/lib/api'
+import { Shield, Users, Activity, ChevronRight, Search, RefreshCw, CheckCircle2, XCircle } from 'lucide-react'
 
-export default function AdminDashboard() {
-    const [tenants, setTenants] = useState<any[]>([]);
-    const [stats, setStats] = useState({ total_revenue: 12500, active_tenants: 0, server_health: 98 });
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const res = await api.get("/admin/tenants");
-                setTenants(res.data);
-                setStats(s => ({ ...s, active_tenants: res.data.length }));
-            } catch (err) {
-                console.error("Failed to fetch admin data", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchData();
-    }, []);
-
-    if (loading) return <div className="p-8 text-primary animate-pulse font-mono uppercase tracking-widest">System Accessing...</div>;
-
-    return (
-        <div className="p-8 space-y-8 min-h-screen bg-black text-white selection:bg-primary/30 max-w-7xl mx-auto">
-            {/* Admin Header */}
-            <div className="flex justify-between items-center border-b border-white/10 pb-8">
-                <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-xl bg-primary/10 border border-primary/20 text-primary animate-pulse">
-                        <Shield size={32} />
-                    </div>
-                    <div>
-                        <h1 className="text-4xl font-black tracking-tighter uppercase italic">Control <span className="text-primary">Center</span></h1>
-                        <p className="text-white/40 text-xs font-mono tracking-widest uppercase">Global SaaS Orchestration Layer</p>
-                    </div>
-                </div>
-                <div className="flex items-center gap-6">
-                    <div className="text-right">
-                        <div className="text-[10px] font-mono text-white/40 uppercase tracking-widest">System Status</div>
-                        <div className="flex items-center gap-2 text-emerald-500 font-bold text-sm">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                            OPERATIONAL
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Global Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <AdminStatCard title="Active Segments" value={stats.active_tenants} icon={Server} trend="+5" color="border-blue-500/30" />
-                <AdminStatCard title="Global Revenue" value={`$${stats.total_revenue}`} icon={DollarSign} trend="+$1.2k" color="border-primary/30" />
-                <AdminStatCard title="Node Health" value={`${stats.server_health}%`} icon={Activity} trend="STABLE" color="border-emerald-500/30" />
-            </div>
-
-            {/* Tenant Orchestrator */}
-            <div className="rounded-3xl bg-white/[0.02] border border-white/10 overflow-hidden backdrop-blur-3xl shadow-2xl">
-                <div className="p-6 border-b border-white/10 flex justify-between items-center bg-white/[0.01]">
-                    <div className="flex items-center gap-3">
-                        <Users size={20} className="text-primary" />
-                        <h2 className="text-lg font-bold uppercase tracking-wider">Tenant Orchestrator</h2>
-                    </div>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={16} />
-                        <input
-                            type="text"
-                            placeholder="SEARCH BY UUID OR NAMESPACE..."
-                            className="bg-black/40 border border-white/10 rounded-full py-2 pl-10 pr-4 text-[10px] font-mono w-64 focus:border-primary outline-none transition-all"
-                        />
-                    </div>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                        <thead>
-                            <tr className="bg-white/[0.02] text-[10px] font-mono text-white/40 uppercase tracking-widest">
-                                <th className="p-4 pl-8">Namespace</th>
-                                <th className="p-4">Subdomain</th>
-                                <th className="p-4">Plan Tier</th>
-                                <th className="p-4">Status</th>
-                                <th className="p-4">Deployment Date</th>
-                                <th className="p-4 pr-8 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                            {tenants.map((t) => (
-                                <tr key={t.id} className="hover:bg-white/[0.02] transition-colors group">
-                                    <td className="p-4 pl-8">
-                                        <div className="font-bold text-sm tracking-tight group-hover:text-primary transition-colors cursor-pointer">{t.name}</div>
-                                        <div className="text-[9px] font-mono text-white/30 uppercase mt-1">ID: T-{t.id.toString().padStart(4, '0')}</div>
-                                    </td>
-                                    <td className="p-4 font-mono text-xs text-blue-400">{t.subdomain}.omniflow.io</td>
-                                    <td className="p-4">
-                                        <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-tighter ${t.plan === 'Enterprise' ? 'bg-primary/20 text-primary border border-primary/30' :
-                                            t.plan === 'Pro' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
-                                                'bg-white/10 text-white/60 border border-white/10'
-                                            }`}>
-                                            {t.plan}
-                                        </span>
-                                    </td>
-                                    <td className="p-4">
-                                        <div className="flex items-center gap-2">
-                                            <div className={`w-2 h-2 rounded-full ${t.is_active ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                                            <span className="text-[10px] font-bold uppercase">{t.is_active ? 'Online' : 'Suspended'}</span>
-                                        </div>
-                                    </td>
-                                    <td className="p-4 text-xs font-mono text-white/40">{new Date(t.created_at).toLocaleDateString()}</td>
-                                    <td className="p-4 pr-8 text-right">
-                                        <button className="p-2 rounded-lg bg-white/5 hover:bg-primary/20 hover:text-primary transition-all">
-                                            <ChevronRight size={18} />
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-                <div className="p-4 border-t border-white/10 bg-black/40 text-center">
-                    <button className="text-[10px] font-mono text-primary font-bold uppercase tracking-widest hover:underline">
-                        Deploy New Global Instance +
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
+interface Tenant {
+  id: number
+  name: string
+  subdomain: string
+  plan?: string
+  is_active: boolean
+  created_at: string
 }
 
-function AdminStatCard({ title, value, icon: Icon, trend, color }: any) {
-    return (
-        <div className={`p-6 rounded-3xl bg-white/[0.02] border border-white/10 flex items-center justify-between group hover:bg-white/[0.04] transition-all cursor-crosshair ${color}`}>
-            <div className="space-y-1">
-                <p className="text-[9px] font-mono text-white/40 uppercase tracking-[0.2em]">{title}</p>
-                <div className="text-3xl font-black tracking-tighter">{value}</div>
-                <p className="text-[10px] font-mono text-emerald-500">{trend}</p>
-            </div>
-            <div className="p-4 rounded-2xl bg-white/5 text-white/20 group-hover:text-primary group-hover:bg-primary/10 transition-all">
-                <Icon size={32} />
-            </div>
+export default function AdminPage() {
+  const [tenants, setTenants] = useState<Tenant[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+
+  const fetchData = () => {
+    setLoading(true)
+    adminAPI.getTenants()
+      .then((r) => setTenants(r.data))
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { fetchData() }, [])
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    if (!q) return tenants
+    return tenants.filter((t) =>
+      t.name.toLowerCase().includes(q) ||
+      t.subdomain.toLowerCase().includes(q) ||
+      t.plan?.toLowerCase().includes(q)
+    )
+  }, [search, tenants])
+
+  const activeCount = tenants.filter((t) => t.is_active).length
+
+  const planColor = (plan?: string) => {
+    if (plan === 'Enterprise') return { bg: '#7c3aed20', color: '#a78bfa' }
+    if (plan === 'Pro') return { bg: '#2563eb20', color: '#60a5fa' }
+    return { bg: 'rgba(255,255,255,0.05)', color: '#94a3b8' }
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-violet-500/10">
+            <Shield size={20} className="text-violet-400" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-white">Panel Admin</h1>
+            <p className="text-slate-400 text-sm mt-0.5">Gestión global de tenants</p>
+          </div>
         </div>
-    );
+        <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/20 rounded-full px-3 py-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+          <span className="text-xs text-green-400 font-medium">Sistema operativo</span>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-[#0d0d1a] border border-white/5 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="p-2 rounded-lg bg-violet-500/10">
+              <Users size={16} className="text-violet-400" />
+            </div>
+            <Activity size={12} className="text-slate-600" />
+          </div>
+          <div className="text-2xl font-bold text-white">{tenants.length}</div>
+          <div className="text-sm text-slate-400 mt-0.5">Tenants totales</div>
+        </div>
+        <div className="bg-[#0d0d1a] border border-white/5 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="p-2 rounded-lg bg-green-500/10">
+              <CheckCircle2 size={16} className="text-green-400" />
+            </div>
+            <Activity size={12} className="text-slate-600" />
+          </div>
+          <div className="text-2xl font-bold text-white">{activeCount}</div>
+          <div className="text-sm text-slate-400 mt-0.5">Tenants activos</div>
+        </div>
+        <div className="bg-[#0d0d1a] border border-white/5 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="p-2 rounded-lg bg-amber-500/10">
+              <Shield size={16} className="text-amber-400" />
+            </div>
+            <Activity size={12} className="text-slate-600" />
+          </div>
+          <div className="text-2xl font-bold text-white">{tenants.length - activeCount}</div>
+          <div className="text-sm text-slate-400 mt-0.5">Suspendidos</div>
+        </div>
+      </div>
+
+      {/* Tenant table */}
+      <div className="bg-[#0d0d1a] border border-white/5 rounded-2xl overflow-hidden">
+        <div className="p-4 border-b border-white/5 flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Users size={15} className="text-slate-400" />
+            <span className="text-sm font-semibold text-white">Tenants</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar por nombre, subdominio..."
+                className="bg-white/5 border border-white/5 rounded-lg pl-8 pr-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-violet-500/40 transition-all w-56"
+              />
+            </div>
+            <button
+              onClick={fetchData}
+              className="p-2 rounded-lg hover:bg-white/5 text-slate-500 hover:text-slate-300 transition-all"
+            >
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="p-6 space-y-3">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-12 bg-white/3 rounded-lg animate-pulse" />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="p-10 text-center">
+            <Users size={28} className="text-slate-700 mx-auto mb-2" />
+            <p className="text-sm text-slate-500">{search ? 'Sin resultados' : 'Sin tenants registrados'}</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-white/5">
+                  <th className="px-5 py-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Nombre</th>
+                  <th className="px-5 py-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Subdominio</th>
+                  <th className="px-5 py-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Plan</th>
+                  <th className="px-5 py-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Estado</th>
+                  <th className="px-5 py-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider">Creado</th>
+                  <th className="px-5 py-3 text-[10px] font-medium text-slate-500 uppercase tracking-wider text-right">Acción</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/3">
+                {filtered.map((t) => {
+                  const pc = planColor(t.plan)
+                  return (
+                    <tr key={t.id} className="hover:bg-white/3 transition-colors group">
+                      <td className="px-5 py-3.5">
+                        <div className="text-sm font-medium text-white">{t.name}</div>
+                        <div className="text-[10px] text-slate-600 font-mono mt-0.5">ID-{t.id.toString().padStart(4, '0')}</div>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <code className="text-xs text-violet-300">{t.subdomain}</code>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span
+                          className="text-[11px] font-medium px-2 py-0.5 rounded"
+                          style={{ background: pc.bg, color: pc.color }}
+                        >
+                          {t.plan || 'Sin plan'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-1.5">
+                          {t.is_active
+                            ? <><CheckCircle2 size={11} className="text-green-400" /><span className="text-xs text-green-400">Activo</span></>
+                            : <><XCircle size={11} className="text-red-400" /><span className="text-xs text-red-400">Suspendido</span></>
+                          }
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5 text-xs text-slate-500">
+                        {new Date(t.created_at).toLocaleDateString('es')}
+                      </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <button className="p-1.5 rounded-lg bg-white/5 hover:bg-violet-500/20 text-slate-500 hover:text-violet-400 transition-all opacity-0 group-hover:opacity-100">
+                          <ChevronRight size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }

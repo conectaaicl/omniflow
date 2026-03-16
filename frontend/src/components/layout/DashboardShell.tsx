@@ -1,83 +1,146 @@
-"use client";
+'use client'
 
-import React from "react";
-import { BrandingProvider, useBranding } from "@/components/providers/BrandingProvider";
-import { LogOut, LayoutDashboard, MessageSquare, Zap, BarChart3, Settings, Target, Shield, DollarSign, CreditCard } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import React, { useEffect, useState } from 'react'
+import { useBranding } from '@/components/providers/BrandingProvider'
+import {
+  LogOut, LayoutDashboard, MessageSquare, Zap, Settings,
+  Target, Shield, CreditCard, Plug, ChevronRight, Wifi
+} from 'lucide-react'
+import Link from 'next/link'
+import { usePathname, useRouter } from 'next/navigation'
 
-const SidebarLink = ({ icon: Icon, label, href, active = false }: { icon: any, label: string, href: string, active?: boolean }) => (
-    <Link href={href}>
-        <div className={`px-3 py-2 rounded-lg flex items-center gap-3 transition-colors cursor-pointer ${active ? "bg-primary/10 text-primary font-medium" : "hover:bg-white/5 text-foreground/70"
-            }`}>
-            {active && <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />}
-            <Icon size={18} />
-            {label}
-        </div>
-    </Link>
-);
+interface NavItem {
+  icon: React.ElementType
+  label: string
+  href: string
+}
 
-const UserProfile = () => (
-    <div className="flex items-center gap-3 p-2 rounded-lg bg-white/5">
-        <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold">
-            JD
+const NAV_ITEMS: NavItem[] = [
+  { icon: LayoutDashboard, label: 'Dashboard',        href: '/dashboard' },
+  { icon: MessageSquare,   label: 'Conversaciones',   href: '/conversations' },
+  { icon: Target,          label: 'Pipeline CRM',     href: '/pipeline' },
+  { icon: Zap,             label: 'Automatizaciones', href: '/automations' },
+  { icon: Plug,            label: 'Integraciones',    href: '/settings/integrations' },
+  { icon: Settings,        label: 'Ajustes',          href: '/settings' },
+  { icon: CreditCard,      label: 'Suscripción',      href: '/settings/billing' },
+  { icon: Shield,          label: 'Admin Global',     href: '/admin' },
+]
+
+function decodeJwt(token: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(atob(token.split('.')[1]))
+  } catch {
+    return null
+  }
+}
+
+export default function DashboardShell({ children }: { children: React.ReactNode }) {
+  const { branding } = useBranding()
+  const pathname = usePathname()
+  const router = useRouter()
+  const [user, setUser] = useState<{ name: string; email: string; initials: string } | null>(null)
+
+  useEffect(() => {
+    const token = localStorage.getItem('omniflow_token')
+    if (!token) {
+      router.push('/login')
+      return
+    }
+    const payload = decodeJwt(token)
+    if (!payload) {
+      router.push('/login')
+      return
+    }
+    // Try cached user info first
+    const cached = localStorage.getItem('omniflow_user')
+    if (cached) {
+      try {
+        const u = JSON.parse(cached)
+        const initials = (u.full_name || u.email || 'U')
+          .split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2)
+        setUser({ name: u.full_name || u.email, email: u.email, initials })
+      } catch { /* ignore */ }
+    }
+  }, [router])
+
+  const handleLogout = () => {
+    localStorage.removeItem('omniflow_token')
+    localStorage.removeItem('omniflow_user')
+    router.push('/login')
+  }
+
+  const isActive = (href: string) => {
+    if (href === '/dashboard' || href === '/settings') return pathname === href
+    return pathname.startsWith(href)
+  }
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-[#080812]">
+      {/* ── Sidebar ──────────────────────────────────────────── */}
+      <aside className="w-64 flex flex-col border-r border-white/5 bg-[#0d0d1a]">
+        {/* Logo */}
+        <div className="px-6 py-5 border-b border-white/5">
+          <Link href="/dashboard" className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-purple-500 flex items-center justify-center shadow-lg shadow-violet-500/30">
+              <Wifi size={16} className="text-white" />
+            </div>
+            {branding?.settings?.logo_url ? (
+              <img src={branding.settings.logo_url} alt={branding.name} className="h-6 w-auto object-contain" />
+            ) : (
+              <span className="text-lg font-bold bg-gradient-to-r from-violet-400 to-purple-300 bg-clip-text text-transparent">
+                {branding?.name || 'OmniFlow'}
+              </span>
+            )}
+          </Link>
         </div>
-        <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">John Doe</p>
-            <p className="text-xs text-foreground/50 truncate">White Label Admin</p>
+
+        {/* Nav */}
+        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+          {NAV_ITEMS.map(({ icon: Icon, label, href }) => {
+            const active = isActive(href)
+            return (
+              <Link key={href} href={href}>
+                <div className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150 cursor-pointer ${
+                  active
+                    ? 'bg-violet-600/20 text-violet-300 font-medium'
+                    : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+                }`}>
+                  <Icon size={17} className={active ? 'text-violet-400' : 'text-slate-500 group-hover:text-slate-300'} />
+                  <span className="flex-1">{label}</span>
+                  {active && <ChevronRight size={13} className="text-violet-400/60" />}
+                </div>
+              </Link>
+            )
+          })}
+        </nav>
+
+        {/* User + logout */}
+        <div className="px-3 py-4 border-t border-white/5 space-y-1">
+          {user && (
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white/5 mb-2">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-600 to-purple-500 flex items-center justify-center text-xs font-bold text-white shrink-0">
+                {user.initials}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-200 truncate">{user.name}</p>
+                <p className="text-xs text-slate-500 truncate">{user.email}</p>
+              </div>
+            </div>
+          )}
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all duration-150"
+          >
+            <LogOut size={17} />
+            Cerrar Sesión
+          </button>
         </div>
+      </aside>
+
+      {/* ── Main ─────────────────────────────────────────────── */}
+      <main className="flex-1 overflow-y-auto">
+        {children}
+      </main>
     </div>
-);
-
-export const DashboardShell = ({ children }: { children: React.ReactNode }) => {
-    const { branding, loading } = useBranding();
-    const pathname = usePathname();
-
-    return (
-        <div className="flex h-screen overflow-hidden">
-            {/* Sidebar */}
-            <aside className="w-64 border-r border-border bg-card/50 backdrop-blur-md flex flex-col">
-                <div className="p-6 border-b border-border">
-                    {branding?.settings?.logo_url ? (
-                        <img src={branding.settings.logo_url} alt={branding.name} className="h-8 w-auto object-contain" />
-                    ) : (
-                        <h1 className="text-2xl font-bold premium-gradient bg-clip-text text-transparent">
-                            {branding?.name || "OmniFlow"}
-                        </h1>
-                    )}
-                </div>
-                <nav className="flex-1 p-4 space-y-2">
-                    <SidebarLink icon={LayoutDashboard} label="Dashboard" href="/" active={pathname === "/"} />
-                    <SidebarLink icon={MessageSquare} label="Conversaciones" href="/conversations" active={pathname === "/conversations"} />
-                    <SidebarLink icon={Target} label="Pipeline de Ventas" href="/pipeline" active={pathname === "/pipeline"} />
-                    <SidebarLink icon={CreditCard} label="Suscripción" href="/settings/billing" active={pathname === "/settings/billing"} />
-                    <SidebarLink icon={Zap} label="Automatizaciones" href="/automations" active={pathname === "/automations"} />
-                    <SidebarLink icon={Settings} label="Integraciones" href="/settings/integrations" active={pathname === "/settings/integrations"} />
-                    <SidebarLink icon={Shield} label="Administración" href="/admin" active={pathname === "/admin"} />
-                </nav>
-                <div className="p-4 border-t border-border space-y-4">
-                    <UserProfile />
-                    <button className="w-full px-3 py-2 rounded-lg flex items-center gap-3 text-red-500 hover:bg-red-500/10 transition-colors text-sm font-medium">
-                        <LogOut size={18} />
-                        Cerrar Sesión
-                    </button>
-                </div>
-            </aside>
-
-            {/* Main Content */}
-            <main className="flex-1 overflow-y-auto bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-background to-background border-l border-border">
-                <div className="max-w-[1600px] mx-auto min-h-full">
-                    {children}
-                </div>
-            </main>
-        </div>
-    );
-};
-
-export default function ShellWithBranding({ children }: { children: React.ReactNode }) {
-    return (
-        <BrandingProvider>
-            <DashboardShell>{children}</DashboardShell>
-        </BrandingProvider>
-    );
+  )
 }

@@ -1,197 +1,258 @@
-"use client";
+'use client'
 
-import React, { useState, useEffect } from "react";
-import { MessageSquare, Send, Phone, User, Search, Filter, MoreVertical, Smartphone } from "lucide-react";
-import { useBranding } from "@/components/providers/BrandingProvider";
-import api from "@/lib/api";
+import { useState, useEffect, useRef } from 'react'
+import { conversationsAPI } from '@/lib/api'
+import {
+  MessageSquare, Send, Phone, User, Search,
+  Smartphone, Instagram, Facebook, Globe, RefreshCw
+} from 'lucide-react'
+
+interface Contact  { id: number; name: string; phone: string; lead_score: number; intent: string }
+interface Conv     { id: number; channel: string; status: string; last_message: string; updated_at: string; contact: Contact }
+interface Message  { id: number; sender_type: string; content: string; timestamp: string }
+
+const CHANNEL_ICON: Record<string, React.ElementType> = {
+  whatsapp: Phone, instagram: Instagram, facebook: Facebook, web: Globe,
+}
+const CHANNEL_COLOR: Record<string, string> = {
+  whatsapp: '#25d366', instagram: '#e1306c', facebook: '#1877f2', web: '#7c3aed',
+}
+
+function scoreColor(score: number) {
+  if (score >= 70) return 'text-green-400 bg-green-400/10'
+  if (score >= 40) return 'text-amber-400 bg-amber-400/10'
+  return 'text-slate-400 bg-white/5'
+}
+
+function formatTime(iso: string) {
+  try { return new Date(iso).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' }) } catch { return '' }
+}
 
 export default function ConversationsPage() {
-    const { branding } = useBranding();
-    const [conversations, setConversations] = useState<any[]>([]);
-    const [selectedId, setSelectedId] = useState<number | null>(null);
-    const [messages, setMessages] = useState<any[]>([]);
-    const [newMessage, setNewMessage] = useState("");
-    const [loading, setLoading] = useState(true);
+  const [conversations, setConversations] = useState<Conv[]>([])
+  const [filtered, setFiltered] = useState<Conv[]>([])
+  const [selected, setSelected] = useState<Conv | null>(null)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState('')
+  const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [sending, setSending] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
-    useEffect(() => {
-        const fetchConversations = async () => {
-            try {
-                const res = await api.get("/conversations/");
-                setConversations(res.data);
-                if (res.data.length > 0 && !selectedId) {
-                    setSelectedId(res.data[0].id);
-                }
-            } catch (err) {
-                console.error("Fetch convs failed", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchConversations();
-    }, []);
+  const loadConversations = () => {
+    conversationsAPI.list()
+      .then((r) => {
+        setConversations(r.data)
+        setFiltered(r.data)
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }
 
-    useEffect(() => {
-        if (!selectedId) return;
-        const fetchMessages = async () => {
-            try {
-                const res = await api.get(`/conversations/${selectedId}/messages`);
-                setMessages(res.data);
-            } catch (err) {
-                console.error("Fetch msgs failed", err);
-            }
-        };
-        fetchMessages();
-        // Setup polling or websocket for real-time
-        const interval = setInterval(fetchMessages, 5000);
-        return () => clearInterval(interval);
-    }, [selectedId]);
+  useEffect(() => { loadConversations() }, [])
 
-    const handleSendMessage = async () => {
-        if (!newMessage.trim() || !selectedId) return;
-        try {
-            await api.post(`/conversations/${selectedId}/send`, { content: newMessage });
-            setNewMessage("");
-            // Refresh messages
-            const res = await api.get(`/conversations/${selectedId}/messages`);
-            setMessages(res.data);
-        } catch (err) {
-            console.error("Send failed", err);
-        }
-    };
+  useEffect(() => {
+    if (!selected) return
+    const poll = setInterval(() => {
+      conversationsAPI.getMessages(selected.id).then((r) => setMessages(r.data)).catch(() => {})
+    }, 5000)
+    conversationsAPI.getMessages(selected.id).then((r) => setMessages(r.data)).catch(() => {})
+    return () => clearInterval(poll)
+  }, [selected])
 
-    const selectedConv = conversations.find(c => c.id === selectedId);
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
-    return (
-        <div className="flex h-full bg-background overflow-hidden max-w-[1600px] mx-auto w-full shadow-2xl">
-            {/* List Sidebar */}
-            <div className="w-80 border-r border-border bg-card/20 flex flex-col">
-                <div className="p-4 border-b border-border space-y-4">
-                    <h2 className="text-xl font-bold">Conversations</h2>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-2.5 text-foreground/30" size={16} />
-                        <input
-                            type="text"
-                            placeholder="Search chats..."
-                            className="w-full bg-white/5 border border-border rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                        />
-                    </div>
-                </div>
-                <div className="flex-1 overflow-y-auto">
-                    {conversations.map((conv) => (
-                        <div
-                            key={conv.id}
-                            onClick={() => setSelectedId(conv.id)}
-                            className={`p-4 border-b border-white/5 cursor-pointer transition-colors ${selectedId === conv.id ? "bg-primary/10 border-r-2 border-r-primary" : "hover:bg-white/5"
-                                }`}
-                        >
-                            <div className="flex justify-between items-start mb-1">
-                                <div className="flex items-center gap-2">
-                                    <span className="font-semibold text-sm truncate">{conv.contact.name}</span>
-                                    {conv.contact.lead_score > 70 && (
-                                        <span className="px-1.5 py-0.5 rounded text-[8px] bg-red-500/20 text-red-500 font-bold uppercase">Hot</span>
-                                    )}
-                                </div>
-                                <span className="text-[10px] text-foreground/30">
-                                    {new Date(conv.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className={`w-2 h-2 rounded-full ${conv.channel === 'whatsapp' ? 'bg-emerald-500' : 'bg-blue-500'}`} />
-                                <p className="text-xs text-foreground/50 truncate flex-1">{conv.last_message || "No messages yet"}</p>
-                                {conv.contact.intent && (
-                                    <span className="text-[9px] text-primary/70 italic truncate max-w-[60px]">{conv.contact.intent}</span>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
+  useEffect(() => {
+    const q = search.toLowerCase()
+    setFiltered(
+      q ? conversations.filter((c) =>
+        c.contact.name.toLowerCase().includes(q) ||
+        c.contact.phone?.includes(q) ||
+        c.last_message?.toLowerCase().includes(q)
+      ) : conversations
+    )
+  }, [search, conversations])
 
-            {/* Chat Area */}
-            <div className="flex-1 flex flex-col relative">
-                {selectedConv ? (
-                    <>
-                        {/* Chat Header */}
-                        <div className="p-4 border-b border-border bg-card/30 backdrop-blur-md flex justify-between items-center">
-                            <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center font-bold">
-                                    {selectedConv.contact.name.charAt(0)}
-                                </div>
-                                <div className="space-y-1">
-                                    <div className="flex items-center gap-3">
-                                        <h3 className="font-bold text-sm">{selectedConv.contact.name}</h3>
-                                        <div className="flex items-center gap-2">
-                                            <span className="px-2 py-0.5 rounded-full bg-white/5 border border-border text-[9px] font-bold text-primary">
-                                                SCORE: {selectedConv.contact.lead_score}
-                                            </span>
-                                            {selectedConv.contact.intent && (
-                                                <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[9px] font-bold uppercase tracking-wider">
-                                                    {selectedConv.contact.intent.replace('_', ' ')}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-[10px] text-foreground/50 uppercase tracking-wider">
-                                        <Smartphone size={10} />
-                                        {selectedConv.channel} • {selectedConv.contact.phone}
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-4 text-foreground/50">
-                                <Phone size={20} className="cursor-pointer hover:text-primary transition-colors" />
-                                <Filter size={20} className="cursor-pointer hover:text-primary transition-colors" />
-                                <MoreVertical size={20} className="cursor-pointer hover:text-primary transition-colors" />
-                            </div>
-                        </div>
+  const handleSend = async () => {
+    if (!input.trim() || !selected || sending) return
+    setSending(true)
+    try {
+      await conversationsAPI.send(selected.id, input.trim())
+      setInput('')
+      const r = await conversationsAPI.getMessages(selected.id)
+      setMessages(r.data)
+    } catch (e) { console.error(e) }
+    finally { setSending(false) }
+  }
 
-                        {/* Messages List */}
-                        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-fixed opacity-80">
-                            {messages.map((msg) => (
-                                <div key={msg.id} className={`flex ${msg.sender_type === 'human' || msg.sender_type === 'bot' ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`max-w-[70%] p-3 rounded-2xl text-sm shadow-sm ${msg.sender_type === 'human'
-                                        ? "bg-primary text-white rounded-tr-none"
-                                        : msg.sender_type === 'bot'
-                                            ? "bg-purple-600 text-white rounded-tr-none"
-                                            : "bg-card border border-border text-foreground rounded-tl-none"
-                                        }`}>
-                                        <p>{msg.content}</p>
-                                        <div className={`text-[9px] mt-1 opacity-50 ${msg.sender_type !== 'contact' ? 'text-right' : ''}`}>
-                                            {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+  const ChannelIcon = selected ? (CHANNEL_ICON[selected.channel] || Globe) : Globe
 
-                        {/* Input Area */}
-                        <div className="p-4 border-t border-border bg-card/30">
-                            <div className="relative flex items-center gap-3">
-                                <input
-                                    type="text"
-                                    value={newMessage}
-                                    onChange={(e) => setNewMessage(e.target.value)}
-                                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                                    placeholder="Type your message..."
-                                    className="flex-1 bg-white/5 border border-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                                />
-                                <button
-                                    onClick={handleSendMessage}
-                                    className="p-3 rounded-xl bg-primary text-white hover:opacity-90 transition-opacity shadow-lg shadow-primary/20"
-                                >
-                                    <Send size={20} />
-                                </button>
-                            </div>
-                        </div>
-                    </>
-                ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-foreground/30 space-y-4">
-                        <div className="p-6 rounded-full bg-white/5">
-                            <MessageSquare size={48} />
-                        </div>
-                        <p className="text-sm font-medium">Select a conversation to start chatting</p>
-                    </div>
-                )}
-            </div>
+  return (
+    <div className="flex h-full bg-[#080812]" style={{ height: 'calc(100vh - 0px)' }}>
+      {/* Sidebar */}
+      <div className="w-80 flex flex-col border-r border-white/5 bg-[#0a0a14]">
+        <div className="p-4 border-b border-white/5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-white">Conversaciones</h2>
+            <button onClick={loadConversations} className="p-1.5 rounded-lg hover:bg-white/5 text-slate-500 hover:text-slate-300 transition-all">
+              <RefreshCw size={13} />
+            </button>
+          </div>
+          <div className="relative">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar contacto o mensaje..."
+              className="w-full bg-white/5 border border-white/5 rounded-lg pl-8 pr-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-violet-500/40 transition-all"
+            />
+          </div>
         </div>
-    );
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="p-4 space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex gap-3 animate-pulse">
+                  <div className="w-9 h-9 rounded-full bg-white/5 shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 bg-white/5 rounded w-3/4" />
+                    <div className="h-2 bg-white/5 rounded w-1/2" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="p-6 text-center">
+              <MessageSquare size={28} className="text-slate-700 mx-auto mb-2" />
+              <p className="text-xs text-slate-500">{search ? 'Sin resultados' : 'Sin conversaciones aún'}</p>
+            </div>
+          ) : (
+            filtered.map((conv) => {
+              const Icon = CHANNEL_ICON[conv.channel] || Globe
+              const color = CHANNEL_COLOR[conv.channel] || '#7c3aed'
+              const isSelected = selected?.id === conv.id
+              return (
+                <button
+                  key={conv.id}
+                  onClick={() => setSelected(conv)}
+                  className={`w-full text-left px-4 py-3 flex gap-3 items-start transition-all hover:bg-white/5 ${isSelected ? 'bg-violet-600/10 border-l-2 border-violet-500' : 'border-l-2 border-transparent'}`}
+                >
+                  <div className="w-9 h-9 rounded-full bg-white/5 flex items-center justify-center shrink-0" style={{ background: `${color}20` }}>
+                    <User size={14} style={{ color }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-white truncate">{conv.contact.name}</span>
+                      <span className="text-xs text-slate-600 shrink-0">{formatTime(conv.updated_at)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <Icon size={10} style={{ color }} className="shrink-0" />
+                      <span className="text-xs text-slate-500 truncate">{conv.last_message || 'Sin mensajes'}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${scoreColor(conv.contact.lead_score)}`}>
+                        {conv.contact.lead_score}
+                      </span>
+                      {conv.contact.intent && (
+                        <span className="text-xs text-slate-600 capitalize truncate">{conv.contact.intent.replace('_', ' ')}</span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              )
+            })
+          )}
+        </div>
+      </div>
+
+      {/* Chat area */}
+      <div className="flex-1 flex flex-col">
+        {selected ? (
+          <>
+            {/* Chat header */}
+            <div className="px-5 py-3.5 border-b border-white/5 bg-[#0a0a14] flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: `${CHANNEL_COLOR[selected.channel] || '#7c3aed'}20` }}>
+                <User size={14} style={{ color: CHANNEL_COLOR[selected.channel] || '#7c3aed' }} />
+              </div>
+              <div>
+                <p className="font-medium text-white text-sm">{selected.contact.name}</p>
+                <div className="flex items-center gap-2">
+                  <ChannelIcon size={10} style={{ color: CHANNEL_COLOR[selected.channel] || '#7c3aed' }} />
+                  <span className="text-xs text-slate-500 capitalize">{selected.channel}</span>
+                  {selected.contact.phone && <span className="text-xs text-slate-600">· {selected.contact.phone}</span>}
+                </div>
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${scoreColor(selected.contact.lead_score)}`}>
+                  Score {selected.contact.lead_score}
+                </span>
+                <Smartphone size={14} className="text-slate-500" />
+              </div>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {messages.length === 0 ? (
+                <div className="h-full flex items-center justify-center">
+                  <p className="text-xs text-slate-600">Sin mensajes en esta conversación</p>
+                </div>
+              ) : (
+                messages.map((msg) => {
+                  const isOutgoing = msg.sender_type === 'human' || msg.sender_type === 'bot'
+                  return (
+                    <div key={msg.id} className={`flex ${isOutgoing ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 text-sm ${
+                        isOutgoing
+                          ? 'bg-violet-600/30 text-white rounded-br-sm'
+                          : 'bg-white/5 text-slate-200 rounded-bl-sm'
+                      }`}>
+                        <p className="leading-relaxed">{msg.content}</p>
+                        <p className={`text-xs mt-1 ${isOutgoing ? 'text-violet-300/60' : 'text-slate-600'}`}>
+                          {formatTime(msg.timestamp)}
+                          {msg.sender_type === 'bot' && ' · Bot'}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input */}
+            <div className="p-4 border-t border-white/5 bg-[#0a0a14]">
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                  placeholder="Escribe un mensaje..."
+                  className="flex-1 bg-white/5 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-violet-500/40 transition-all"
+                />
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim() || sending}
+                  className="p-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Send size={16} />
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <MessageSquare size={40} className="text-slate-700 mx-auto mb-3" />
+              <p className="text-slate-500">Selecciona una conversación</p>
+              <p className="text-xs text-slate-700 mt-1">Los mensajes de WhatsApp, Instagram y más aparecerán aquí</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
