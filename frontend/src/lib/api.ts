@@ -46,10 +46,7 @@ export const authAPI = {
 
 // ── Tenant ───────────────────────────────────────────────────
 export const tenantAPI = {
-  getPublicInfo: () =>
-    api.get('/tenants/public-info', {
-      headers: typeof window !== 'undefined' ? { host: window.location.host } : {},
-    }),
+  getPublicInfo: () => api.get('/tenants/public-info'),
   getSettings: () => api.get('/tenants/settings'),
   updateSettings: (data: Record<string, unknown>) => api.patch('/tenants/settings', data),
   getDashboardStats: () => api.get('/tenants/dashboard-stats'),
@@ -75,12 +72,18 @@ export const crmAPI = {
 export const billingAPI = {
   getCurrent: () => api.get('/billing/current'),
   subscribe: (planId: number) => api.post(`/billing/subscribe/${planId}`),
+  createMPPreference: (data: { plan: string; billing: string; email: string; subdomain: string }) =>
+    api.post('/billing/create-preference', data),
 }
 
 // ── Admin ────────────────────────────────────────────────────
 export const adminAPI = {
   getTenants: () => api.get('/admin/tenants'),
+  getStats: () => api.get('/admin/stats'),
   getPlans: () => api.get('/admin/plans'),
+  toggleTenant: (id: number) => api.patch(`/admin/tenants/${id}/toggle`),
+  createTenant: (data: { name: string; subdomain: string; admin_email: string; password: string }) =>
+    api.post('/admin/tenants', null, { params: data }),
 }
 
 // ── Legacy compat (used by BrandingProvider) ─────────────────

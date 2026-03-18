@@ -5,7 +5,7 @@ import { tenantAPI } from '@/lib/api'
 import {
   Phone, Instagram, Facebook, Globe, Tv2, Mail, ShoppingBag,
   CheckCircle2, AlertCircle, Save, RefreshCw, Eye, EyeOff,
-  ExternalLink, Copy, Bot, Zap
+  ExternalLink, Copy, Bot, Zap, MessageSquare
 } from 'lucide-react'
 
 interface Settings { [key: string]: string | number | boolean | undefined }
@@ -99,7 +99,9 @@ export default function IntegrationsPage() {
 
   useEffect(() => {
     tenantAPI.getSettings()
-      .then((r) => setS(r.data || {}))
+      .then((r) => {
+        setS(r.data || {})
+      })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [])
@@ -250,7 +252,7 @@ export default function IntegrationsPage() {
       </Section>
 
       {/* Web Chat */}
-      <Section title="Web Chat Widget" icon={Globe} color="#7c3aed"
+      <Section title="Web Chat Widget + AI Agent" icon={Globe} color="#7c3aed"
         connected={bool('webchat_enabled')}
         onSave={() => save('wc', ['webchat_enabled','webchat_greeting','webchat_bot_name','webchat_color'])}
         saving={saving === 'wc'} saved={saved === 'wc'}>
@@ -264,14 +266,37 @@ export default function IntegrationsPage() {
         </div>
         <Field label="Mensaje de bienvenida" value={str('webchat_greeting') || '¡Hola! ¿En qué puedo ayudarte?'} onChange={v => set('webchat_greeting', v)} placeholder="¡Hola! ¿En qué puedo ayudarte?" />
         <Field label="Nombre del asistente" value={str('webchat_bot_name') || 'Asistente'} onChange={v => set('webchat_bot_name', v)} placeholder="Asistente" />
+        <div>
+          <label className="block text-xs font-medium text-slate-400 mb-1.5">Color del widget</label>
+          <div className="flex items-center gap-3">
+            <input type="color" value={str('webchat_color') || '#7c3aed'} onChange={e => set('webchat_color', e.target.value)}
+              className="w-10 h-10 rounded-lg border border-white/10 bg-transparent cursor-pointer" />
+            <code className="flex-1 text-sm font-mono bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-violet-300">
+              {str('webchat_color') || '#7c3aed'}
+            </code>
+          </div>
+        </div>
         <div className="mt-2 bg-white/3 border border-white/5 rounded-lg p-3">
           <p className="text-xs text-slate-500 mb-2 font-medium">Código para pegar antes de <code>&lt;/body&gt;</code>:</p>
-          <pre className="text-xs text-violet-300 font-mono overflow-x-auto whitespace-pre-wrap break-all">{`<script src="${origin}/widget.js" data-tenant="osw"></script>`}</pre>
+          <pre className="text-xs text-violet-300 font-mono overflow-x-auto whitespace-pre-wrap break-all">
+            {`<script src="${origin}/widget.js" data-tenant="${str('tenant_subdomain') || 'osw'}"></script>`}
+          </pre>
         </div>
-        <a href={`${origin}/webchat-preview`} target="_blank" rel="noopener noreferrer"
-          className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 transition-colors">
-          Ver preview del widget <ExternalLink size={10} />
-        </a>
+        <div className="flex items-center gap-3">
+          <a href={`${origin}/webchat-preview`} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 transition-colors">
+            Ver preview del widget <ExternalLink size={10} />
+          </a>
+          {bool('has_ai') && (
+            <span className="flex items-center gap-1 text-xs text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full">
+              <Bot size={10} /> AI Agent activo
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-slate-600">
+          Para entrenar el AI Agent ve a{' '}
+          <a href="/settings" className="text-violet-400 hover:text-violet-300">Configuración → AI Sales Agent</a>
+        </p>
       </Section>
 
       {/* n8n */}

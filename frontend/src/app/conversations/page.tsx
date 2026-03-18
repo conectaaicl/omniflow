@@ -7,7 +7,7 @@ import {
   Smartphone, Instagram, Facebook, Globe, RefreshCw
 } from 'lucide-react'
 
-interface Contact  { id: number; name: string; phone: string; lead_score: number; intent: string }
+interface Contact  { id: number; name: string; phone: string; lead_score: number; intent: string; ip_address?: string; external_id?: string }
 interface Conv     { id: number; channel: string; status: string; last_message: string; updated_at: string; contact: Contact }
 interface Message  { id: number; sender_type: string; content: string; timestamp: string }
 
@@ -156,8 +156,10 @@ export default function ConversationsPage() {
                       <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${scoreColor(conv.contact.lead_score)}`}>
                         {conv.contact.lead_score}
                       </span>
-                      {conv.contact.intent && (
-                        <span className="text-xs text-slate-600 capitalize truncate">{conv.contact.intent.replace('_', ' ')}</span>
+                      {conv.contact.ip_address && (
+                        <span className="text-[10px] font-mono text-slate-700 truncate" title={conv.contact.ip_address}>
+                          {conv.contact.ip_address}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -186,6 +188,11 @@ export default function ConversationsPage() {
                 </div>
               </div>
               <div className="ml-auto flex items-center gap-2">
+                {selected.contact.ip_address && (
+                  <span className="text-[10px] font-mono text-slate-500 bg-white/5 px-2 py-0.5 rounded border border-white/5 select-all" title="IP del visitante">
+                    {selected.contact.ip_address}
+                  </span>
+                )}
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${scoreColor(selected.contact.lead_score)}`}>
                   Score {selected.contact.lead_score}
                 </span>

@@ -39,6 +39,10 @@ class TenantSettingsRead(BaseModel):
     webchat_greeting: Optional[str] = None
     webchat_bot_name: Optional[str] = None
     webchat_color: Optional[str] = None
+    webchat_system_prompt: Optional[str] = None
+    ai_provider: Optional[str] = "groq"
+    ai_model: Optional[str] = None
+    has_ai: bool = False
     n8n_url: Optional[str] = None
     n8n_webhook_path: Optional[str] = None
 
@@ -53,22 +57,28 @@ class TenantSettingsUpdate(BaseModel):
     support_phone: Optional[str] = None
     timezone: Optional[str] = None
     language: Optional[str] = None
+    # WhatsApp
     whatsapp_phone_id: Optional[str] = None
     whatsapp_access_token: Optional[str] = None
     whatsapp_verify_token: Optional[str] = None
     whatsapp_number: Optional[str] = None
+    # Instagram
     instagram_page_id: Optional[str] = None
     instagram_access_token: Optional[str] = None
     instagram_verify_token: Optional[str] = None
+    # Facebook
     facebook_page_id: Optional[str] = None
     facebook_access_token: Optional[str] = None
     facebook_verify_token: Optional[str] = None
+    # TikTok
     tiktok_app_id: Optional[str] = None
     tiktok_app_secret: Optional[str] = None
     tiktok_access_token: Optional[str] = None
+    # Shopify
     shopify_shop_domain: Optional[str] = None
     shopify_access_token: Optional[str] = None
     shopify_webhook_secret: Optional[str] = None
+    # Email
     email_provider: Optional[str] = None
     smtp_host: Optional[str] = None
     smtp_port: Optional[int] = None
@@ -78,11 +88,16 @@ class TenantSettingsUpdate(BaseModel):
     sendgrid_api_key: Optional[str] = None
     mailgun_api_key: Optional[str] = None
     mailgun_domain: Optional[str] = None
+    # Web Chat + AI Agent
     webchat_enabled: Optional[bool] = None
     webchat_greeting: Optional[str] = None
     webchat_bot_name: Optional[str] = None
     webchat_color: Optional[str] = None
+    webchat_system_prompt: Optional[str] = None
     openai_api_key: Optional[str] = None
+    ai_provider: Optional[str] = None
+    ai_model: Optional[str] = None
+    # n8n
     n8n_url: Optional[str] = None
     n8n_webhook_path: Optional[str] = None
 

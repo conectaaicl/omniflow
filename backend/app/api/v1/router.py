@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, tenants, webhooks, conversations, crm, admin, billing, webchat
+from app.api.v1.endpoints import auth, tenants, webhooks, conversations, crm, admin, billing, webchat, internal
 
 api_router = APIRouter()
 api_router.include_router(auth.router,          prefix="/auth",          tags=["auth"])
@@ -10,3 +10,4 @@ api_router.include_router(crm.router,           prefix="/crm",           tags=["
 api_router.include_router(admin.router,         prefix="/admin",         tags=["admin"])
 api_router.include_router(billing.router,       prefix="/billing",       tags=["billing"])
 api_router.include_router(webchat.router,       prefix="/webchat",       tags=["webchat"])
+api_router.include_router(internal.router,      prefix="/internal",      tags=["internal"])

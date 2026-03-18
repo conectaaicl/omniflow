@@ -1,0 +1,639 @@
+{
+  "name": "AI Sales Agent PRO - TerraBlinds",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "nuevo-lead",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "🔔 Nuevo Lead (Webhook)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ received: true }) }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Respuesta 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [200, 100]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "1", "name": "tenant_subdomain", "value": "={{ $json.body?.tenant_id == 1 ? 'osw' : 'shop' }}", "type": "string" },
+            { "id": "2", "name": "external_id", "value": "={{ $json.body?.contact?.external_id || '' }}", "type": "string" },
+            { "id": "3", "name": "visitor_name", "value": "={{ $json.body?.contact?.name || 'Visitante' }}", "type": "string" },
+            { "id": "4", "name": "first_message", "value": "={{ $json.body?.message?.content || '' }}", "type": "string" },
+            { "id": "5", "name": "conversation_id", "value": "={{ $json.body?.message?.conversation_id || 0 }}", "type": "number" },
+            { "id": "6", "name": "channel", "value": "={{ $json.body?.channel || 'web' }}", "type": "string" },
+            { "id": "7", "name": "contact_id", "value": "={{ $json.body?.contact?.id || 0 }}", "type": "number" },
+            { "id": "8", "name": "omniflow_base", "value": "https://osw.conectaai.cl/api/v1", "type": "string" },
+            { "id": "9", "name": "n8n_secret", "value": "n8n_omniflow_bb381df03a4fa5e2706c0e11fd468468", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-vars",
+      "name": "📋 Variables del Lead",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"model\":\"llama-3.1-8b-instant\",\"messages\":[{\"role\":\"system\",\"content\":\"Eres un clasificador de leads para una tienda de cortinas y persianas llamada TerraBlinds. Analiza el mensaje y responde SOLO con un JSON con estos campos: {intent: string (cotizacion|info_producto|soporte|spam|saludo), urgency: string (alta|media|baja), product: string (nombre del producto si se menciona, si no general), extracted_name: string o null, extracted_phone: string o null, extracted_email: string o null, summary: string (resumen en 10 palabras)}\"},{\"role\":\"user\",\"content\":\"{{ $json.first_message }}\"}],\"max_tokens\":200,\"temperature\":0.1}",
+        "options": {}
+      },
+      "id": "groq-classify",
+      "name": "🤖 Groq: Clasificar Intención",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [400, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "groq-auth",
+          "name": "Groq API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst choice = raw.choices?.[0]?.message?.content || '{}';\nlet classification;\ntry {\n  const clean = choice.replace(/```json\\n?/g,'').replace(/```/g,'').trim();\n  classification = JSON.parse(clean);\n} catch(e) {\n  classification = { intent: 'cotizacion', urgency: 'media', product: 'general', extracted_name: null, extracted_phone: null, extracted_email: null, summary: 'Lead sin clasificar' };\n}\n\nconst prev = $('📋 Variables del Lead').first().json;\nreturn [{\n  json: {\n    ...prev,\n    intent: classification.intent || 'cotizacion',\n    urgency: classification.urgency || 'media',\n    product: classification.product || 'general',\n    extracted_name: classification.extracted_name,\n    extracted_phone: classification.extracted_phone,\n    extracted_email: classification.extracted_email,\n    summary: classification.summary || '',\n    is_spam: classification.intent === 'spam',\n  }\n}];"
+      },
+      "id": "parse-classification",
+      "name": "🔍 Parsear Clasificación",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "1",
+              "leftValue": "={{ $json.is_spam }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-spam",
+      "name": "🚫 ¿Es Spam?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.omniflow_base }}/internal/contact/upsert",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Secret", "value": "={{ $json.n8n_secret }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "subdomain", "value": "={{ $json.tenant_subdomain }}" },
+            { "name": "external_id", "value": "={{ $json.external_id }}" },
+            { "name": "name", "value": "={{ $json.extracted_name || $json.visitor_name }}" },
+            { "name": "phone", "value": "={{ $json.extracted_phone || '' }}" },
+            { "name": "email", "value": "={{ $json.extracted_email || '' }}" },
+            { "name": "source", "value": "={{ $json.channel }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "upsert-contact",
+      "name": "💾 Registrar en CRM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('🔍 Parsear Clasificación').first().json.omniflow_base }}/internal/deal/upsert",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Secret", "value": "={{ $('🔍 Parsear Clasificación').first().json.n8n_secret }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "subdomain", "value": "={{ $('🔍 Parsear Clasificación').first().json.tenant_subdomain }}" },
+            { "name": "external_id", "value": "={{ $('🔍 Parsear Clasificación').first().json.external_id }}" },
+            { "name": "title", "value": "={{ 'Lead: ' + ($('🔍 Parsear Clasificación').first().json.extracted_name || $('🔍 Parsear Clasificación').first().json.visitor_name) + ' - ' + $('🔍 Parsear Clasificación').first().json.product }}" },
+            { "name": "stage_name", "value": "Nuevo Lead" },
+            { "name": "value", "value": "=0" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "create-deal",
+      "name": "📊 Crear Deal en Pipeline",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('🔍 Parsear Clasificación').first().json.telegram_chat_id || '8676382169' }}",
+        "text": "=🆕 Nuevo Lead {{ $('🔍 Parsear Clasificación').first().json.urgency === 'alta' ? '🔥 URGENTE' : '' }}\n\nNombre: {{ $('🔍 Parsear Clasificación').first().json.extracted_name || $('🔍 Parsear Clasificación').first().json.visitor_name }}\nCanal: {{ $('🔍 Parsear Clasificación').first().json.channel }}\nIntención: {{ $('🔍 Parsear Clasificación').first().json.intent }}\nProducto: {{ $('🔍 Parsear Clasificación').first().json.product }}\nMensaje: {{ $('🔍 Parsear Clasificación').first().json.first_message }}\nResumen: {{ $('🔍 Parsear Clasificación').first().json.summary }}",
+        "additionalFields": {}
+      },
+      "id": "telegram-notify",
+      "name": "📱 Telegram: Notificar Equipo",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1400, 200],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot",
+          "name": "Telegram Bot TerraBlinds"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "1",
+              "leftValue": "={{ $('🔍 Parsear Clasificación').first().json.extracted_phone }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "isNotEmpty" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-has-phone",
+      "name": "📞 ¿Tiene Teléfono?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1400, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('🔍 Parsear Clasificación').first().json.omniflow_base }}/internal/webchat/inject",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Secret", "value": "={{ $('🔍 Parsear Clasificación').first().json.n8n_secret }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "subdomain", "value": "={{ $('🔍 Parsear Clasificación').first().json.tenant_subdomain }}" },
+            { "name": "external_id", "value": "={{ $('🔍 Parsear Clasificación').first().json.external_id }}" },
+            { "name": "content", "value": "Para enviarte tu cotización personalizada, ¿me podrías compartir tu número de WhatsApp? Así te la envío directamente 📲" },
+            { "name": "sender_type", "value": "bot" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "inject-ask-phone",
+      "name": "💬 Chat: Pedir WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1600, 500]
+    },
+    {
+      "parameters": {
+        "amount": 10,
+        "unit": "minutes"
+      },
+      "id": "wait-10min",
+      "name": "⏳ Esperar 10 min",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1800, 500],
+      "webhookId": "wait-10min-webhook"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('🔍 Parsear Clasificación').first().json.omniflow_base }}/internal/contact/cid_{{ $('🔍 Parsear Clasificación').first().json.contact_id }}?subdomain={{ $('🔍 Parsear Clasificación').first().json.tenant_subdomain }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Secret", "value": "={{ $('🔍 Parsear Clasificación').first().json.n8n_secret }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "check-contact-10min",
+      "name": "🔎 Verificar Contacto (10min)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "1",
+              "leftValue": "={{ $json.has_phone }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-phone-after-10min",
+      "name": "📞 ¿Dejó Teléfono?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2200, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"model\":\"llama-3.3-70b-versatile\",\"messages\":[{\"role\":\"system\",\"content\":\"Eres el AI Sales Agent de TerraBlinds. Genera una cotización profesional en español. Precios: Roller Blackout/Screen/Sunscreen $38.000/m2, Roller Duo $45.000/m2 (10% dcto online = $40.500/m2), Roller Dual $56.000/m2. Instalación gratis en RM. Si no tienes medidas exactas, da una cotización estimada con rango. Formato: breve, profesional, con emoji, máximo 5 líneas. Incluye subtotal y total. Finaliza con WhatsApp: wa.me/56935318909\"},{\"role\":\"user\",\"content\":\"Genera cotización para: producto={{ $('🔍 Parsear Clasificación').first().json.product }}, mensaje original: {{ $('🔍 Parsear Clasificación').first().json.first_message }}, nombre: {{ $('🔎 Verificar Contacto (10min)').first().json.contact?.name || 'Cliente' }}\"}],\"max_tokens\":400,\"temperature\":0.4}",
+        "options": {}
+      },
+      "id": "groq-generate-quote",
+      "name": "🤖 Groq: Generar Cotización",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2400, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "groq-auth",
+          "name": "Groq API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst quoteText = raw.choices?.[0]?.message?.content || '¡Hola! Aquí tu cotización...';\nreturn [{ json: { quote_text: quoteText } }];"
+      },
+      "id": "parse-quote",
+      "name": "📄 Parsear Cotización",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2600, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('🔍 Parsear Clasificación').first().json.omniflow_base }}/internal/webchat/inject",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Secret", "value": "={{ $('🔍 Parsear Clasificación').first().json.n8n_secret }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "subdomain", "value": "={{ $('🔍 Parsear Clasificación').first().json.tenant_subdomain }}" },
+            { "name": "external_id", "value": "={{ $('🔍 Parsear Clasificación').first().json.external_id }}" },
+            { "name": "content", "value": "={{ $('📄 Parsear Cotización').first().json.quote_text }}" },
+            { "name": "sender_type", "value": "bot" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "inject-quote",
+      "name": "💬 Chat: Enviar Cotización",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2800, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('🔍 Parsear Clasificación').first().json.omniflow_base }}/internal/deal/upsert",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Secret", "value": "={{ $('🔍 Parsear Clasificación').first().json.n8n_secret }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "subdomain", "value": "={{ $('🔍 Parsear Clasificación').first().json.tenant_subdomain }}" },
+            { "name": "external_id", "value": "={{ $('🔍 Parsear Clasificación').first().json.external_id }}" },
+            { "name": "stage_name", "value": "Propuesta" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "move-deal-propuesta",
+      "name": "📊 Pipeline → Propuesta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3000, 400]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('🔍 Parsear Clasificación').first().json.telegram_chat_id || '8676382169' }}",
+        "text": "=✅ Cotización Enviada\n\nCliente: {{ $('🔎 Verificar Contacto (10min)').first().json.contact?.name || 'Cliente' }}\nTelefono: {{ $('🔎 Verificar Contacto (10min)').first().json.contact?.phone || 'sin tel' }}\nProducto: {{ $('🔍 Parsear Clasificación').first().json.product }}\nDeal movido a Propuesta",
+        "additionalFields": {}
+      },
+      "id": "telegram-quote-sent",
+      "name": "📱 Telegram: Cotización Enviada",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [3200, 400],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram-bot",
+          "name": "Telegram Bot TerraBlinds"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "hours"
+      },
+      "id": "wait-2h",
+      "name": "⏳ Esperar 2 horas",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2400, 600],
+      "webhookId": "wait-2h-webhook"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('🔍 Parsear Clasificación').first().json.omniflow_base }}/internal/webchat/inject",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Secret", "value": "={{ $('🔍 Parsear Clasificación').first().json.n8n_secret }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "subdomain", "value": "={{ $('🔍 Parsear Clasificación').first().json.tenant_subdomain }}" },
+            { "name": "external_id", "value": "={{ $('🔍 Parsear Clasificación').first().json.external_id }}" },
+            { "name": "content", "value": "Hola 👋 ¿Sigues interesado/a en tu cotización de {{ $('🔍 Parsear Clasificación').first().json.product !== 'general' ? $('🔍 Parsear Clasificación').first().json.product : 'cortinas' }}? Puedo enviártela a tu WhatsApp ahora mismo. Solo compárteme tu número 📱" },
+            { "name": "sender_type", "value": "bot" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "inject-followup-2h",
+      "name": "💬 Follow-up 2h",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2600, 600]
+    },
+    {
+      "parameters": {
+        "amount": 1,
+        "unit": "days"
+      },
+      "id": "wait-1day",
+      "name": "⏳ Esperar 1 día",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2800, 600],
+      "webhookId": "wait-1day-webhook"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('🔍 Parsear Clasificación').first().json.omniflow_base }}/internal/webchat/inject",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Secret", "value": "={{ $('🔍 Parsear Clasificación').first().json.n8n_secret }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "subdomain", "value": "={{ $('🔍 Parsear Clasificación').first().json.tenant_subdomain }}" },
+            { "name": "external_id", "value": "={{ $('🔍 Parsear Clasificación').first().json.external_id }}" },
+            { "name": "content", "value": "🌟 ¡Última oportunidad esta semana! Las Roller Duo tienen un 10% de descuento exclusivo para cotizaciones online. ¿Te interesa que te calcule el precio exacto para tu ventana? Escríbeme las medidas (ancho x alto en cm) 📐" },
+            { "name": "sender_type", "value": "bot" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "inject-followup-1day",
+      "name": "💬 Follow-up Día 1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3000, 600]
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "days"
+      },
+      "id": "wait-3days",
+      "name": "⏳ Esperar 2 días más",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [3200, 600],
+      "webhookId": "wait-3days-webhook"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('🔍 Parsear Clasificación').first().json.omniflow_base }}/internal/webchat/inject",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Secret", "value": "={{ $('🔍 Parsear Clasificación').first().json.n8n_secret }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "subdomain", "value": "={{ $('🔍 Parsear Clasificación').first().json.tenant_subdomain }}" },
+            { "name": "external_id", "value": "={{ $('🔍 Parsear Clasificación').first().json.external_id }}" },
+            { "name": "content", "value": "Hola, sé que estás ocupado/a 😊 Si en algún momento quieres retomar tu cotización de {{ $('🔍 Parsear Clasificación').first().json.product !== 'general' ? $('🔍 Parsear Clasificación').first().json.product : 'persianas' }}, aquí estaré. También puedes escribirnos directamente a WhatsApp: wa.me/56935318909 ¡Que tengas un excelente día! 🌟" },
+            { "name": "sender_type", "value": "bot" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "inject-final-followup",
+      "name": "💬 Follow-up Final (Día 3)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3400, 600]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('🔍 Parsear Clasificación').first().json.omniflow_base }}/internal/deal/upsert",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Secret", "value": "={{ $('🔍 Parsear Clasificación').first().json.n8n_secret }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "subdomain", "value": "={{ $('🔍 Parsear Clasificación').first().json.tenant_subdomain }}" },
+            { "name": "external_id", "value": "={{ $('🔍 Parsear Clasificación').first().json.external_id }}" },
+            { "name": "stage_name", "value": "Perdido" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "mark-cold",
+      "name": "📊 Pipeline → Perdido (Cold)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3600, 600]
+    }
+  ],
+  "connections": {
+    "🔔 Nuevo Lead (Webhook)": {
+      "main": [
+        [
+          { "node": "Respuesta 200", "type": "main", "index": 0 },
+          { "node": "📋 Variables del Lead", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "📋 Variables del Lead": {
+      "main": [[{ "node": "🤖 Groq: Clasificar Intención", "type": "main", "index": 0 }]]
+    },
+    "🤖 Groq: Clasificar Intención": {
+      "main": [[{ "node": "🔍 Parsear Clasificación", "type": "main", "index": 0 }]]
+    },
+    "🔍 Parsear Clasificación": {
+      "main": [[{ "node": "🚫 ¿Es Spam?", "type": "main", "index": 0 }]]
+    },
+    "🚫 ¿Es Spam?": {
+      "main": [
+        [],
+        [{ "node": "💾 Registrar en CRM", "type": "main", "index": 0 }]
+      ]
+    },
+    "💾 Registrar en CRM": {
+      "main": [[{ "node": "📊 Crear Deal en Pipeline", "type": "main", "index": 0 }]]
+    },
+    "📊 Crear Deal en Pipeline": {
+      "main": [
+        [
+          { "node": "📱 Telegram: Notificar Equipo", "type": "main", "index": 0 },
+          { "node": "📞 ¿Tiene Teléfono?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "📞 ¿Tiene Teléfono?": {
+      "main": [
+        [{ "node": "🤖 Groq: Generar Cotización", "type": "main", "index": 0 }],
+        [{ "node": "💬 Chat: Pedir WhatsApp", "type": "main", "index": 0 }]
+      ]
+    },
+    "💬 Chat: Pedir WhatsApp": {
+      "main": [[{ "node": "⏳ Esperar 10 min", "type": "main", "index": 0 }]]
+    },
+    "⏳ Esperar 10 min": {
+      "main": [[{ "node": "🔎 Verificar Contacto (10min)", "type": "main", "index": 0 }]]
+    },
+    "🔎 Verificar Contacto (10min)": {
+      "main": [[{ "node": "📞 ¿Dejó Teléfono?", "type": "main", "index": 0 }]]
+    },
+    "📞 ¿Dejó Teléfono?": {
+      "main": [
+        [{ "node": "🤖 Groq: Generar Cotización", "type": "main", "index": 0 }],
+        [{ "node": "⏳ Esperar 2 horas", "type": "main", "index": 0 }]
+      ]
+    },
+    "⏳ Esperar 2 horas": {
+      "main": [[{ "node": "💬 Follow-up 2h", "type": "main", "index": 0 }]]
+    },
+    "💬 Follow-up 2h": {
+      "main": [[{ "node": "⏳ Esperar 1 día", "type": "main", "index": 0 }]]
+    },
+    "⏳ Esperar 1 día": {
+      "main": [[{ "node": "💬 Follow-up Día 1", "type": "main", "index": 0 }]]
+    },
+    "💬 Follow-up Día 1": {
+      "main": [[{ "node": "⏳ Esperar 2 días más", "type": "main", "index": 0 }]]
+    },
+    "⏳ Esperar 2 días más": {
+      "main": [[{ "node": "💬 Follow-up Final (Día 3)", "type": "main", "index": 0 }]]
+    },
+    "💬 Follow-up Final (Día 3)": {
+      "main": [[{ "node": "📊 Pipeline → Perdido (Cold)", "type": "main", "index": 0 }]]
+    },
+    "🤖 Groq: Generar Cotización": {
+      "main": [[{ "node": "📄 Parsear Cotización", "type": "main", "index": 0 }]]
+    },
+    "📄 Parsear Cotización": {
+      "main": [[{ "node": "💬 Chat: Enviar Cotización", "type": "main", "index": 0 }]]
+    },
+    "💬 Chat: Enviar Cotización": {
+      "main": [[{ "node": "📊 Pipeline → Propuesta", "type": "main", "index": 0 }]]
+    },
+    "📊 Pipeline → Propuesta": {
+      "main": [[{ "node": "📱 Telegram: Cotización Enviada", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": ["sales", "terrablinds", "ai-agent"],
+  "triggerCount": 0,
+  "updatedAt": "2026-03-17T00:00:00.000Z",
+  "versionId": "1"
+}

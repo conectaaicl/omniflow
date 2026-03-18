@@ -9,6 +9,12 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: str = "*"
     WHATSAPP_VERIFY_TOKEN: str = "omniflow_verify_token"
+    N8N_API_SECRET: str = ""
+
+    # Mercado Pago
+    MP_ACCESS_TOKEN: Optional[str] = None
+    MP_PUBLIC_KEY: Optional[str] = None
+    FRONTEND_URL: str = "https://osw.conectaai.cl"
 
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_USER: str = "postgres"

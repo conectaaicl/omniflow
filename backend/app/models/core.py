@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, JSON, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.core.database import Base
@@ -76,9 +76,12 @@ class TenantSettings(Base):
     webchat_greeting = Column(String, default="¡Hola! ¿En qué puedo ayudarte?")
     webchat_bot_name = Column(String, default="Asistente")
     webchat_color = Column(String, nullable=True)
+    webchat_system_prompt = Column(Text, nullable=True)
 
-    # AI
-    openai_api_key = Column(String, nullable=True)
+    # AI Sales Agent
+    openai_api_key = Column(String, nullable=True)   # reused for Groq key
+    ai_provider = Column(String, default="groq")     # groq | openai
+    ai_model = Column(String, nullable=True)         # e.g. llama-3.1-8b-instant
 
     # n8n
     n8n_url = Column(String, nullable=True)
