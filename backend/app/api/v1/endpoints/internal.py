@@ -383,6 +383,12 @@ class InjectWhatsApp(BaseModel):
     phone: str                # contact phone number (WhatsApp from field)
     content: str
     sender_type: str = "bot"  # bot | human
+    contact_name: Optional[str] = None  # auto-create if contact not found
+
+
+class HandoffRequest(BaseModel):
+    subdomain: str
+    phone: str
 
 
 @router.post("/whatsapp/inject")
@@ -391,12 +397,22 @@ def inject_whatsapp_message(
     db: Session = Depends(get_db),
     _: str = Depends(_require_secret),
 ):
-    """Inject a bot/human message into a WhatsApp conversation in OmniFlow CRM."""
+    """Inject a bot/human message into a WhatsApp conversation in OmniFlow CRM.
+    Auto-creates contact and conversation if they don't exist yet."""
     tenant = _get_tenant_by_subdomain(payload.subdomain, db)
     with tenant_db_session(tenant.schema_name) as tdb:
         contact = tdb.query(Contact).filter(Contact.phone == payload.phone).first()
         if not contact:
-            return {"injected": False, "reason": "contact_not_found"}
+            # Auto-create contact from WhatsApp number
+            contact = Contact(
+                name=payload.contact_name or "Cliente WhatsApp",
+                phone=payload.phone,
+                external_id=payload.phone.lstrip("+"),
+                source="whatsapp",
+                last_interaction=datetime.utcnow(),
+            )
+            tdb.add(contact)
+            tdb.flush()
 
         conv = (
             tdb.query(Conversation)
@@ -408,7 +424,15 @@ def inject_whatsapp_message(
             .first()
         )
         if not conv:
-            return {"injected": False, "reason": "conversation_not_found"}
+            # Auto-create WhatsApp conversation
+            conv = Conversation(
+                contact_id=contact.id,
+                channel="whatsapp",
+                status="open",
+                bot_active=True,
+            )
+            tdb.add(conv)
+            tdb.flush()
 
         msg = Message(
             conversation_id=conv.id,
@@ -417,8 +441,40 @@ def inject_whatsapp_message(
             timestamp=datetime.utcnow(),
         )
         tdb.add(msg)
-        conv.last_message = f"[BOT] {payload.content[:80]}"
+        label = payload.sender_type.upper()
+        conv.last_message = f"[{label}] {payload.content[:80]}"
         conv.updated_at = datetime.utcnow()
         tdb.commit()
 
         return {"injected": True, "conversation_id": conv.id, "message_id": msg.id}
+
+
+@router.post("/whatsapp/handoff")
+def whatsapp_handoff(
+    payload: HandoffRequest,
+    db: Session = Depends(get_db),
+    _: str = Depends(_require_secret),
+):
+    """Pause the bot and flag the conversation for a human agent."""
+    tenant = _get_tenant_by_subdomain(payload.subdomain, db)
+    with tenant_db_session(tenant.schema_name) as tdb:
+        contact = tdb.query(Contact).filter(Contact.phone == payload.phone).first()
+        if not contact:
+            return {"ok": False, "reason": "contact_not_found"}
+
+        conv = (
+            tdb.query(Conversation)
+            .filter(
+                Conversation.contact_id == contact.id,
+                Conversation.channel == "whatsapp",
+            )
+            .order_by(Conversation.updated_at.desc())
+            .first()
+        )
+        if not conv:
+            return {"ok": False, "reason": "conversation_not_found"}
+
+        conv.bot_active = False
+        conv.status = "pending"   # highlights in agent inbox
+        tdb.commit()
+        return {"ok": True, "conversation_id": conv.id, "contact_name": contact.name}

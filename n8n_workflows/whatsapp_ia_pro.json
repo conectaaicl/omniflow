@@ -83,7 +83,7 @@
             { "id": "2", "name": "message",         "value": "={{ $json.body.entry[0].changes[0].value.messages[0].text.body }}", "type": "string" },
             { "id": "3", "name": "phone_number_id", "value": "={{ $json.body.entry[0].changes[0].value.metadata.phone_number_id }}", "type": "string" },
             { "id": "4", "name": "wamid",           "value": "={{ $json.body.entry[0].changes[0].value.messages[0].id }}", "type": "string" },
-            { "id": "5", "name": "contact_name",    "value": "={{ $json.body.entry[0].changes[0].value.contacts?.[0]?.profile?.name || 'Cliente' }}", "type": "string" }
+            { "id": "5", "name": "contact_name",    "value": "={{ $json.body.entry[0].changes[0].value.contacts?.[0]?.profile?.name || 'Cliente WhatsApp' }}", "type": "string" }
           ]
         },
         "options": {}
@@ -103,6 +103,16 @@
       "position": [840, 560],
       "id": "fetch-ai-config",
       "name": "⚙️ Cargar Config IA desde OSW"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Auto-registra el contacto en OmniFlow CRM cuando llega un mensaje WA\n// No bloquea el flujo — errores se ignoran silenciosamente\nconst apiSecret = $json.api_secret;\nconst baseUrl = $json.base_url || 'https://osw.conectaai.cl/api/v1';\nconst subdomain = $json.subdomain;\nconst phone = $json.phone;\nconst contactName = $json.contact_name || 'Cliente WhatsApp';\n\ntry {\n  await $http.request({\n    method: 'POST',\n    url: `${baseUrl}/internal/contact/upsert`,\n    headers: { 'X-API-Secret': apiSecret, 'Content-Type': 'application/json' },\n    body: JSON.stringify({\n      subdomain,\n      external_id: phone,\n      name: contactName,\n      phone: '+' + phone,\n      source: 'whatsapp',\n    }),\n  });\n} catch(e) {\n  // non-blocking — ignore\n}\n\nreturn [{ json: $input.item.json }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 760],
+      "id": "upsert-contact",
+      "name": "👤 Registrar Contacto WA"
     },
     {
       "parameters": {
@@ -186,7 +196,8 @@
             { "id": "5", "name": "user_message",     "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.message }}", "type": "string" },
             { "id": "6", "name": "subdomain",        "value": "={{ $('⚙️ Cargar Config IA desde OSW').item.json.subdomain }}", "type": "string" },
             { "id": "7", "name": "api_secret",       "value": "={{ $('⚙️ Cargar Config IA desde OSW').item.json.api_secret }}", "type": "string" },
-            { "id": "8", "name": "whatsapp_token",   "value": "={{ $('⚙️ Cargar Config IA desde OSW').item.json.whatsapp_token }}", "type": "string" }
+            { "id": "8", "name": "whatsapp_token",   "value": "={{ $('⚙️ Cargar Config IA desde OSW').item.json.whatsapp_token }}", "type": "string" },
+            { "id": "9", "name": "contact_name",     "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.contact_name }}", "type": "string" }
           ]
         },
         "options": {}
@@ -209,6 +220,16 @@
     },
     {
       "parameters": {
+        "jsCode": "// ── Detectar y procesar comandos especiales de la IA ──────────────────────────\n// COTIZACION_WA: → guarda cotización en CRM, elimina tag del mensaje\n// ESCALAR_HUMANO → pausa el bot, notifica al agente, elimina tag del mensaje\n\nconst rawResponse = $json.ai_response || '';\nconst phone = $json.phone;\nconst subdomain = $json.subdomain;\nconst apiSecret = $json.api_secret;\nconst baseUrl = $json.base_url || 'https://osw.conectaai.cl/api/v1';\n\nlet cleanedResponse = rawResponse;\nlet shouldEscalate = false;\n\n// ── Detectar ESCALAR_HUMANO ──────────────────────────────────────────────────\nif (rawResponse.includes('ESCALAR_HUMANO')) {\n  shouldEscalate = true;\n  cleanedResponse = cleanedResponse.replace(/ESCALAR_HUMANO/g, '').trim();\n  try {\n    await $http.request({\n      method: 'POST',\n      url: `${baseUrl}/internal/whatsapp/handoff`,\n      headers: { 'X-API-Secret': apiSecret, 'Content-Type': 'application/json' },\n      body: JSON.stringify({ subdomain, phone: '+' + phone }),\n    });\n  } catch(e) { /* non-blocking */ }\n}\n\n// ── Detectar COTIZACION_WA: ──────────────────────────────────────────────────\nconst quoteMatch = rawResponse.match(/COTIZACION_WA:([\\s\\S]+?)(?=\\n\\nESCALAR_HUMANO|\\n\\n[A-Z]|$)/);\nif (quoteMatch) {\n  const quoteText = quoteMatch[1].trim();\n  // Extraer valor total si está presente (ej: $114.000)\n  const valueMatch = quoteText.match(/\\$\\s*([\\d]{1,3}(?:[.,]\\d{3})*)/);\n  const quoteValue = valueMatch\n    ? parseFloat(valueMatch[1].replace(/[.,]/g, ''))\n    : null;\n  try {\n    await $http.request({\n      method: 'POST',\n      url: `${baseUrl}/internal/quote/save`,\n      headers: { 'X-API-Secret': apiSecret, 'Content-Type': 'application/json' },\n      body: JSON.stringify({\n        subdomain,\n        external_id: phone,\n        quote_text: quoteText,\n        total_value: quoteValue,\n      }),\n    });\n  } catch(e) { /* non-blocking */ }\n  cleanedResponse = cleanedResponse.replace(/COTIZACION_WA:[\\s\\S]+?(?=\\n\\n[A-Z]|$)/, '').trim();\n}\n\n// Si el mensaje quedó vacío, usar respuesta de escalamiento o respuesta original\nif (!cleanedResponse) {\n  cleanedResponse = shouldEscalate\n    ? '¡Perfecto! Te estoy conectando con un asesor que te ayudará de inmediato. 👨‍💼'\n    : rawResponse;\n}\n\nreturn [{ json: { ...($input.item.json), ai_response: cleanedResponse, should_escalate: shouldEscalate } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2520, 560],
+      "id": "detect-action",
+      "name": "🎯 Detectar Acción"
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "=https://graph.facebook.com/v19.0/{{ $json.phone_number_id }}/messages",
         "sendHeaders": true,
@@ -225,7 +246,7 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2520, 400],
+      "position": [2800, 400],
       "id": "mark-read",
       "name": "👁️ Marcar como Leído (✓✓)",
       "continueOnFail": true
@@ -248,7 +269,7 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2520, 720],
+      "position": [2800, 720],
       "id": "send-whatsapp",
       "name": "📤 Enviar Respuesta WhatsApp"
     },
@@ -264,12 +285,12 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ subdomain: $json.subdomain, phone: $json.phone, content: $json.ai_response, sender_type: 'bot' }) }}",
+        "jsonBody": "={{ JSON.stringify({ subdomain: $json.subdomain, phone: $json.phone, content: $json.ai_response, sender_type: 'bot', contact_name: $json.contact_name }) }}",
         "options": { "response": { "response": { "responseFormat": "json" } } }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2800, 560],
+      "position": [3080, 560],
       "id": "log-crm",
       "name": "🗂️ Registrar en OmniFlow CRM"
     }
@@ -296,7 +317,10 @@
       "main": [[ { "node": "⚙️ Cargar Config IA desde OSW", "type": "main", "index": 0 } ]]
     },
     "⚙️ Cargar Config IA desde OSW": {
-      "main": [[ { "node": "📚 Cargar Historial (Memoria)", "type": "main", "index": 0 } ]]
+      "main": [[
+        { "node": "📚 Cargar Historial (Memoria)", "type": "main", "index": 0 },
+        { "node": "👤 Registrar Contacto WA", "type": "main", "index": 0 }
+      ]]
     },
     "📚 Cargar Historial (Memoria)": {
       "main": [[ { "node": "🔀 Seleccionar Proveedor IA", "type": "main", "index": 0 } ]]
@@ -317,12 +341,13 @@
       "main": [[ { "node": "💾 Guardar en Memoria", "type": "main", "index": 0 } ]]
     },
     "💾 Guardar en Memoria": {
-      "main": [
-        [
-          { "node": "👁️ Marcar como Leído (✓✓)", "type": "main", "index": 0 },
-          { "node": "📤 Enviar Respuesta WhatsApp", "type": "main", "index": 0 }
-        ]
-      ]
+      "main": [[ { "node": "🎯 Detectar Acción", "type": "main", "index": 0 } ]]
+    },
+    "🎯 Detectar Acción": {
+      "main": [[
+        { "node": "👁️ Marcar como Leído (✓✓)", "type": "main", "index": 0 },
+        { "node": "📤 Enviar Respuesta WhatsApp", "type": "main", "index": 0 }
+      ]]
     },
     "📤 Enviar Respuesta WhatsApp": {
       "main": [[ { "node": "🗂️ Registrar en OmniFlow CRM", "type": "main", "index": 0 } ]]
