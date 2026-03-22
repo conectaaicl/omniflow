@@ -58,6 +58,7 @@ export const tenantAPI = {
   getDashboardStats: () => api.get('/tenants/dashboard-stats'),
   register: (data: Record<string, unknown>) => api.post('/tenants/register', data),
   testWhatsapp: (to: string) => api.post('/tenants/test-whatsapp', null, { params: { to } }),
+  refreshWhatsappToken: () => api.post('/tenants/refresh-whatsapp-token'),
 }
 
 // ── Conversations ────────────────────────────────────────────

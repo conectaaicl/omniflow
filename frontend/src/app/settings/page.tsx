@@ -95,10 +95,14 @@ export default function SettingsPage() {
   const [waPhoneId, setWaPhoneId] = useState('')
   const [waToken, setWaToken] = useState('')
   const [waNumber, setWaNumber] = useState('')
+  const [waAppId, setWaAppId] = useState('')
+  const [waAppSecret, setWaAppSecret] = useState('')
   const [waTestTo, setWaTestTo] = useState('')
   const [waTesting, setWaTesting] = useState(false)
   const [waTestResult, setWaTestResult] = useState<{ ok: boolean; msg: string } | null>(null)
   const [showWaToken, setShowWaToken] = useState(false)
+  const [waRefreshing, setWaRefreshing] = useState(false)
+  const [waRefreshResult, setWaRefreshResult] = useState<{ ok: boolean; msg: string } | null>(null)
 
   // AI
   const [botName, setBotName] = useState('')
@@ -143,6 +147,8 @@ export default function SettingsPage() {
       }
       if (aiKey.trim()) payload.openai_api_key = aiKey.trim()
       if (waToken.trim()) payload.whatsapp_access_token = waToken.trim()
+      if (waAppId.trim()) payload.meta_app_id = waAppId.trim()
+      if (waAppSecret.trim()) payload.meta_app_secret = waAppSecret.trim()
       await tenantAPI.updateSettings(payload)
       setSaved(true); setAiKey('')
       setTimeout(() => setSaved(false), 3000)
@@ -163,6 +169,17 @@ export default function SettingsPage() {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setPwdError(msg || 'Error al cambiar la contraseña')
     } finally { setPwdSaving(false) }
+  }
+
+  const handleRefreshWhatsappToken = async () => {
+    setWaRefreshing(true); setWaRefreshResult(null)
+    try {
+      const r = await tenantAPI.refreshWhatsappToken()
+      setWaRefreshResult({ ok: true, msg: `Token renovado — expira en ${r.data.expires_in_days} días` })
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setWaRefreshResult({ ok: false, msg: msg || 'Error al renovar el token' })
+    } finally { setWaRefreshing(false) }
   }
 
   const handleTestWhatsapp = async () => {
@@ -435,6 +452,33 @@ export default function SettingsPage() {
               </a>
               {' '}→ Usuarios del sistema → Generar token.
             </p>
+          </div>
+
+          {/* Meta App credentials */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Meta App ID" value={waAppId} onChange={setWaAppId} placeholder="990865383365554" mono />
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1.5 flex items-center gap-1"><Key size={11} />Meta App Secret</label>
+              <input type="password" value={waAppSecret} onChange={e => setWaAppSecret(e.target.value)} placeholder="(vacío = mantener actual)"
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500/40 font-mono" />
+            </div>
+          </div>
+
+          {/* Renovar token */}
+          <div className="bg-white/3 border border-white/5 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-medium text-slate-400">Renovar Token (guarda App ID + Secret primero)</p>
+              <button onClick={handleRefreshWhatsappToken} disabled={waRefreshing}
+                className="flex items-center gap-2 bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 text-blue-300 font-medium px-4 py-2 rounded-xl text-xs disabled:opacity-40 disabled:cursor-not-allowed transition-all whitespace-nowrap">
+                {waRefreshing ? <RefreshCw size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                {waRefreshing ? 'Renovando...' : 'Renovar 60 días'}
+              </button>
+            </div>
+            {waRefreshResult && (
+              <p className={`text-xs mt-2 ${waRefreshResult.ok ? 'text-blue-400' : 'text-red-400'}`}>
+                {waRefreshResult.ok ? '✓' : '✗'} {waRefreshResult.msg}
+              </p>
+            )}
           </div>
 
           {/* Test */}

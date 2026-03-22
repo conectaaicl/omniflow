@@ -61,7 +61,7 @@ class TenantSettings(Base):
     shopify_webhook_secret = Column(String, nullable=True)
 
     # Email (SMTP or SendGrid)
-    email_provider = Column(String, nullable=True)   # smtp | sendgrid | mailgun
+    email_provider = Column(String, nullable=True)
     smtp_host = Column(String, nullable=True)
     smtp_port = Column(Integer, nullable=True)
     smtp_user = Column(String, nullable=True)
@@ -71,6 +71,10 @@ class TenantSettings(Base):
     mailgun_api_key = Column(String, nullable=True)
     mailgun_domain = Column(String, nullable=True)
 
+    # MailSaaS (ConectaAI Mail)
+    mailsaas_url = Column(String, nullable=True, default="https://mail.conectaai.cl")
+    mailsaas_api_key = Column(String, nullable=True)
+
     # Web Chat Widget
     webchat_enabled = Column(Boolean, default=True)
     webchat_greeting = Column(String, default="¡Hola! ¿En qué puedo ayudarte?")
@@ -79,9 +83,13 @@ class TenantSettings(Base):
     webchat_system_prompt = Column(Text, nullable=True)
 
     # AI Sales Agent
-    openai_api_key = Column(String, nullable=True)   # reused for Groq key
-    ai_provider = Column(String, default="groq")     # groq | openai
-    ai_model = Column(String, nullable=True)         # e.g. llama-3.1-8b-instant
+    openai_api_key = Column(String, nullable=True)
+    ai_provider = Column(String, default="groq")
+    ai_model = Column(String, nullable=True)
+
+    # Meta App credentials (for token refresh)
+    meta_app_id = Column(String, nullable=True)
+    meta_app_secret = Column(String, nullable=True)
 
     # n8n
     n8n_url = Column(String, nullable=True)
@@ -100,14 +108,15 @@ class User(Base):
     full_name = Column(String)
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
-    role_id = Column(Integer, ForeignKey("roles.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     tenant = relationship("Tenant", back_populates="users")
-    role = relationship("Role")
 
 
 class Role(Base):
     __tablename__ = "roles"
+
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True)
-    permissions = Column(JSON)
+    name = Column(String, unique=True, index=True)
+    permissions = Column(JSON, default={})
+    created_at = Column(DateTime, default=datetime.utcnow)

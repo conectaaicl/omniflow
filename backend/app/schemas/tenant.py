@@ -97,6 +97,9 @@ class TenantSettingsUpdate(BaseModel):
     openai_api_key: Optional[str] = None
     ai_provider: Optional[str] = None
     ai_model: Optional[str] = None
+    # Meta App credentials
+    meta_app_id: Optional[str] = None
+    meta_app_secret: Optional[str] = None
     # n8n
     n8n_url: Optional[str] = None
     n8n_webhook_path: Optional[str] = None

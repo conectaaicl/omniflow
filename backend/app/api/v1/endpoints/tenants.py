@@ -206,6 +206,47 @@ def get_dashboard_stats(
         }
 
 
+@router.post("/refresh-whatsapp-token")
+async def refresh_whatsapp_token(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Exchange current WhatsApp token for a new 60-day token via Meta Graph API."""
+    import httpx
+    tenant = _get_tenant(db, current_user)
+    s = tenant.settings
+    if not s or not s.whatsapp_access_token:
+        raise HTTPException(status_code=400, detail="No hay token guardado")
+    if not s.meta_app_id or not s.meta_app_secret:
+        raise HTTPException(status_code=400, detail="Falta App ID o App Secret de Meta")
+
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.get(
+                "https://graph.facebook.com/oauth/access_token",
+                params={
+                    "grant_type": "fb_exchange_token",
+                    "client_id": s.meta_app_id,
+                    "client_secret": s.meta_app_secret,
+                    "fb_exchange_token": s.whatsapp_access_token,
+                },
+                timeout=10,
+            )
+            data = r.json()
+            if "access_token" not in data:
+                err = data.get("error", {}).get("message", "Token refresh failed")
+                raise HTTPException(status_code=400, detail=err)
+            s.whatsapp_access_token = data["access_token"]
+            db.commit()
+            expires_in = data.get("expires_in", 5183944)
+            days = round(expires_in / 86400)
+            return {"refreshed": True, "expires_in_days": days}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/test-whatsapp")
 async def test_whatsapp_send(
     payload: dict,
