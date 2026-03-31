@@ -54,6 +54,8 @@ class TenantSettings(Base):
     tiktok_app_id = Column(String, nullable=True)
     tiktok_app_secret = Column(String, nullable=True)
     tiktok_access_token = Column(String, nullable=True)
+    telegram_bot_token = Column(String, nullable=True)
+    telegram_bot_username = Column(String, nullable=True)
 
     # Shopify
     shopify_shop_domain = Column(String, nullable=True)

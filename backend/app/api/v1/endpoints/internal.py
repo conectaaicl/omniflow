@@ -366,6 +366,7 @@ def get_whatsapp_tenant_config(
         )
     tenant = db.query(Tenant).filter(Tenant.id == s.tenant_id).first()
     return {
+        "tenant_id": s.tenant_id,
         "subdomain": tenant.subdomain if tenant else "unknown",
         "whatsapp_token": s.whatsapp_access_token,
         "whatsapp_phone_id": s.whatsapp_phone_id,
@@ -400,13 +401,19 @@ def inject_whatsapp_message(
     """Inject a bot/human message into a WhatsApp conversation in OmniFlow CRM.
     Auto-creates contact and conversation if they don't exist yet."""
     tenant = _get_tenant_by_subdomain(payload.subdomain, db)
+    # Normalize phone: always search with + prefix
+    phone_normalized = payload.phone if payload.phone.startswith("+") else f"+{payload.phone}"
     with tenant_db_session(tenant.schema_name) as tdb:
-        contact = tdb.query(Contact).filter(Contact.phone == payload.phone).first()
+        contact = (
+            tdb.query(Contact)
+            .filter(Contact.phone.in_([phone_normalized, payload.phone]))
+            .first()
+        )
         if not contact:
             # Auto-create contact from WhatsApp number
             contact = Contact(
                 name=payload.contact_name or "Cliente WhatsApp",
-                phone=payload.phone,
+                phone=phone_normalized,
                 external_id=payload.phone.lstrip("+"),
                 source="whatsapp",
                 last_interaction=datetime.utcnow(),
@@ -457,8 +464,13 @@ def whatsapp_handoff(
 ):
     """Pause the bot and flag the conversation for a human agent."""
     tenant = _get_tenant_by_subdomain(payload.subdomain, db)
+    phone_normalized = payload.phone if payload.phone.startswith("+") else f"+{payload.phone}"
     with tenant_db_session(tenant.schema_name) as tdb:
-        contact = tdb.query(Contact).filter(Contact.phone == payload.phone).first()
+        contact = (
+            tdb.query(Contact)
+            .filter(Contact.phone.in_([phone_normalized, payload.phone]))
+            .first()
+        )
         if not contact:
             return {"ok": False, "reason": "contact_not_found"}
 
@@ -478,3 +490,55 @@ def whatsapp_handoff(
         conv.status = "pending"   # highlights in agent inbox
         tdb.commit()
         return {"ok": True, "conversation_id": conv.id, "contact_name": contact.name}
+
+
+# ── Knowledge Search (for n8n AI context injection) ────────────────────────────
+
+from fastapi import Request, Query as FQuery
+from app.services.embeddings import get_embedding_sync
+from sqlalchemy import text as sa_text
+
+@router.get("/knowledge-search")
+def knowledge_search_internal(
+    request: Request,
+    tenant_id: int = FQuery(...),
+    q: str = FQuery(..., min_length=1),
+    top_k: int = FQuery(3, le=5),
+    db: Session = Depends(get_db),
+):
+    """
+    Semantic search over a tenant's knowledge base.
+    Called by n8n before passing message to AI — injects business context.
+    Auth: X-Internal-Secret header matching N8N_API_SECRET.
+    """
+    secret = request.headers.get("X-Internal-Secret", "")
+    if not secret or secret != settings.N8N_API_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    emb = get_embedding_sync(q)
+    emb_str = f"[{','.join(str(x) for x in emb)}]"
+
+    rows = db.execute(
+        sa_text("""
+            SELECT contenido,
+                   1 - (embedding <=> CAST(:emb AS vector)) AS similarity
+            FROM knowledge_base
+            WHERE tenant_id = :tid
+              AND embedding IS NOT NULL
+              AND (1 - (embedding <=> CAST(:emb AS vector))) > 0.35
+            ORDER BY embedding <=> CAST(:emb AS vector)
+            LIMIT :k
+        """),
+        {"tid": tenant_id, "emb": emb_str, "k": top_k},
+    ).fetchall()
+
+    if not rows:
+        return {"context": "", "found": 0}
+
+    context_parts = [row.contenido for row in rows]
+    context = "\n\n---\n\n".join(context_parts)
+    return {
+        "context": context,
+        "found": len(rows),
+        "similarities": [round(float(row.similarity), 3) for row in rows],
+    }

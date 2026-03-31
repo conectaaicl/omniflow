@@ -84,7 +84,19 @@ async def verify_whatsapp(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/whatsapp")
 async def handle_whatsapp(request: Request, db: Session = Depends(get_db)):
-    body = await request.json()
+    from app.core.config import settings as app_settings
+    raw_body = await request.body()
+    # Validate X-Hub-Signature-256 if META_WEBHOOK_SECRET is configured
+    if app_settings.META_WEBHOOK_SECRET:
+        sig_header = request.headers.get("X-Hub-Signature-256", "")
+        expected = "sha256=" + hmac.new(
+            app_settings.META_WEBHOOK_SECRET.encode(),
+            raw_body,
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(sig_header, expected):
+            raise HTTPException(status_code=403, detail="Invalid webhook signature")
+    body = json.loads(raw_body)
     entry = body.get("entry", [{}])[0]
     changes = entry.get("changes", [{}])[0]
     value = changes.get("value", {})

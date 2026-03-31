@@ -70,6 +70,8 @@ def get_pipeline(
 def list_contacts(
     search: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
+    tags: Optional[str] = Query(None),
+    min_score: Optional[int] = Query(None),
     limit: int = Query(100, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -85,6 +87,13 @@ def list_contacts(
             )
         if source:
             q = q.filter(Contact.source == source)
+        if min_score is not None:
+            q = q.filter(Contact.lead_score >= min_score)
+        if tags:
+            from sqlalchemy import text as _text
+            tag_list = [t.strip() for t in tags.split(',') if t.strip()]
+            for tag in tag_list:
+                q = q.filter(_text(f"tags @> '\"{tag}\"'::jsonb"))
         total = q.count()
         contacts = q.order_by(Contact.last_interaction.desc()).offset(offset).limit(limit).all()
         return {
@@ -99,6 +108,7 @@ def list_contacts(
                     "lead_score": c.lead_score,
                     "intent": c.intent,
                     "last_interaction": c.last_interaction.isoformat() if c.last_interaction else None,
+                    "tags": getattr(c, 'tags', []) or [],
                 }
                 for c in contacts
             ],

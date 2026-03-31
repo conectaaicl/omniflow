@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: omniflow_db
     restart: always
     environment:
@@ -57,6 +57,15 @@ services:
       - SUPERADMIN_PASSWORD=${SUPERADMIN_PASSWORD}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - FROM_EMAIL=${FROM_EMAIL}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - META_APP_ID=${META_APP_ID}
+      - META_APP_SECRET=${META_APP_SECRET}
+      - META_WEBHOOK_SECRET=${META_WEBHOOK_SECRET}
+      - N8N_API_KEY=${N8N_API_KEY}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - MAILSAAS_URL=${MAILSAAS_URL}
+      - MAILSAAS_API_KEY=${MAILSAAS_API_KEY}
+      - N8N_URL=${N8N_URL}
     depends_on:
       db:
         condition: service_healthy
@@ -76,6 +85,8 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+        - NEXT_PUBLIC_META_APP_ID=${NEXT_PUBLIC_META_APP_ID:-}
+        - NEXT_PUBLIC_META_CONFIG_ID=${NEXT_PUBLIC_META_CONFIG_ID:-}
     container_name: omniflow_frontend
     restart: always
     ports:
@@ -98,9 +109,16 @@ services:
       - N8N_PORT=5678
       - N8N_PROTOCOL=https
       - NODE_ENV=production
-      - WEBHOOK_URL=https://${N8N_HOST}/n8n/
-      - N8N_PATH=/n8n/
-      - N8N_EDITOR_BASE_URL=https://${N8N_HOST}/n8n/
+      - N8N_EDITOR_BASE_URL=https://${N8N_HOST}/
+      - N8N_PUSH_BACKEND=websocket
+      - N8N_ORIGIN_CHECK_ENABLED=false
+      - N8N_TRUST_PROXY=true
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=db
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=omniflow
+      - DB_POSTGRESDB_PASSWORD=Omn1fl0w_S3cur3_2024!
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:

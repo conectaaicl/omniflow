@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.config import settings as app_settings
 from app.core.database import get_db, tenant_db_session
 from app.core.redis_client import check_rate_limit
 from app.models.core import Tenant, TenantSettings
@@ -82,7 +83,7 @@ def get_widget_config(subdomain: str, db: Session = Depends(get_db)):
         "color": s.webchat_color or s.primary_color or "#7c3aed",
         "logo_url": s.logo_url or "",
         "enabled": s.webchat_enabled if s.webchat_enabled is not None else True,
-        "ai_enabled": bool(s.openai_api_key),
+        "ai_enabled": bool(s.openai_api_key or app_settings.GROQ_API_KEY),
     }
 
 
@@ -106,7 +107,8 @@ async def receive_webchat_message(payload: WebChatMessage, request: Request, db:
     settings = tenant.settings
 
     # Eagerly read all settings BEFORE switching DB context (avoids SQLAlchemy lazy-load failures)
-    ai_key = settings.openai_api_key if settings else None
+    # Use tenant's own key, fall back to system GROQ_API_KEY
+    ai_key = (settings.openai_api_key if settings else None) or app_settings.GROQ_API_KEY or None
 
     # ── Plan enforcement: disable AI if subscription is lapsed or plan excludes it ──
     sub = db.query(Subscription).filter(Subscription.tenant_id == tenant.id).first()
