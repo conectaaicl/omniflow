@@ -129,6 +129,16 @@ def _migrate_tenant_schemas():
         tenants = db.query(Tenant).all()
         migrations = [
             "ALTER TABLE {schema}.conversations ADD COLUMN IF NOT EXISTS bot_active BOOLEAN DEFAULT TRUE",
+            "ALTER TABLE {schema}.conversations ADD COLUMN IF NOT EXISTS notes TEXT",
+            "ALTER TABLE {schema}.conversations ADD COLUMN IF NOT EXISTS assigned_to INTEGER",
+            "ALTER TABLE {schema}.messages ADD COLUMN IF NOT EXISTS media_url VARCHAR",
+            """CREATE TABLE IF NOT EXISTS {schema}.canned_responses (
+                id SERIAL PRIMARY KEY,
+                shortcut VARCHAR,
+                title VARCHAR,
+                content TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            )""",
         ]
         with engine.begin() as conn:
             for tenant in tenants:

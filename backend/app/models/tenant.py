@@ -11,7 +11,7 @@ class Contact(Base):
     name = Column(String, index=True)
     phone = Column(String, index=True, nullable=True)
     email = Column(String, index=True, nullable=True)
-    external_id = Column(String, index=True, nullable=True)  # social media ID
+    external_id = Column(String, index=True, nullable=True)
     source = Column(String)
     campaign = Column(String, nullable=True)
     last_interaction = Column(DateTime, default=datetime.utcnow)
@@ -31,7 +31,9 @@ class Conversation(Base):
     status = Column(String, default="open")
     last_message = Column(Text, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    bot_active = Column(Boolean, default=True)  # False = human agent in control
+    bot_active = Column(Boolean, default=True)
+    notes = Column(Text, nullable=True)           # internal agent notes
+    assigned_to = Column(Integer, nullable=True)  # user_id of assigned agent
 
     contact = relationship("Contact", back_populates="conversations")
     messages = relationship("Message", back_populates="conversation")
@@ -44,12 +46,23 @@ class Message(Base):
     conversation_id = Column(Integer, ForeignKey("conversations.id"))
     sender_type = Column(String)
     content = Column(Text)
-    content_type = Column(String, default="text")
+    content_type = Column(String, default="text")  # text | image | document | audio
+    media_url = Column(String, nullable=True)       # outbound media URL
     timestamp = Column(DateTime, default=datetime.utcnow)
     is_read = Column(Boolean, default=False)
     metadata_json = Column(JSON, nullable=True)
 
     conversation = relationship("Conversation", back_populates="messages")
+
+
+class CannedResponse(Base):
+    __tablename__ = "canned_responses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    shortcut = Column(String, index=True)   # e.g. "/precio"
+    title = Column(String)                  # display name
+    content = Column(Text)                  # the message text
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Pipeline(Base):

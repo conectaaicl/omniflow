@@ -400,13 +400,19 @@ def inject_whatsapp_message(
     """Inject a bot/human message into a WhatsApp conversation in OmniFlow CRM.
     Auto-creates contact and conversation if they don't exist yet."""
     tenant = _get_tenant_by_subdomain(payload.subdomain, db)
+    # Normalize phone: always search with + prefix
+    phone_normalized = payload.phone if payload.phone.startswith("+") else f"+{payload.phone}"
     with tenant_db_session(tenant.schema_name) as tdb:
-        contact = tdb.query(Contact).filter(Contact.phone == payload.phone).first()
+        contact = (
+            tdb.query(Contact)
+            .filter(Contact.phone.in_([phone_normalized, payload.phone]))
+            .first()
+        )
         if not contact:
             # Auto-create contact from WhatsApp number
             contact = Contact(
                 name=payload.contact_name or "Cliente WhatsApp",
-                phone=payload.phone,
+                phone=phone_normalized,
                 external_id=payload.phone.lstrip("+"),
                 source="whatsapp",
                 last_interaction=datetime.utcnow(),
@@ -457,8 +463,13 @@ def whatsapp_handoff(
 ):
     """Pause the bot and flag the conversation for a human agent."""
     tenant = _get_tenant_by_subdomain(payload.subdomain, db)
+    phone_normalized = payload.phone if payload.phone.startswith("+") else f"+{payload.phone}"
     with tenant_db_session(tenant.schema_name) as tdb:
-        contact = tdb.query(Contact).filter(Contact.phone == payload.phone).first()
+        contact = (
+            tdb.query(Contact)
+            .filter(Contact.phone.in_([phone_normalized, payload.phone]))
+            .first()
+        )
         if not contact:
             return {"ok": False, "reason": "contact_not_found"}
 

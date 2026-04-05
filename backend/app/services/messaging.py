@@ -32,6 +32,26 @@ async def send_whatsapp(phone_number_id: str, access_token: str, to: str, messag
         return False
 
 
+async def send_whatsapp_image(phone_number_id: str, access_token: str, to: str, image_url: str, caption: str = "") -> bool:
+    """Send a WhatsApp image message via Meta Cloud API."""
+    url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
+    headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to,
+        "type": "image",
+        "image": {"link": image_url, "caption": caption},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post(url, json=payload, headers=headers)
+            return r.status_code == 200
+    except Exception as e:
+        print(f"[WhatsApp image send error] {e}")
+        return False
+
+
 # ── Instagram DM ────────────────────────────────────────────────────────────
 
 async def send_instagram(page_access_token: str, recipient_id: str, message: str) -> bool:

@@ -96,23 +96,55 @@
     },
     {
       "parameters": {
-        "jsCode": "const apiSecret = 'n8n_omniflow_bb381df03a4fa5e2706c0e11fd468468';\nconst baseUrl = 'https://osw.conectaai.cl/api/v1';\nconst phoneNumberId = $input.item.json.phone_number_id;\n\n// Fallback — se usa si el tenant no tiene config guardada\nlet config = {\n  subdomain: 'osw',\n  whatsapp_token: null,\n  system_prompt: `Eres el Asistente de Ventas IA de TerraBlinds. Responde SIEMPRE en español chileno.\\n\\n⚠️ REGLAS ABSOLUTAS:\\n1. TODOS los precios son en PESOS CHILENOS (CLP). Usa el símbolo $. JAMÁS uses euros, dólares u otra moneda.\\n2. Responde máximo 4-5 líneas.\\n3. Si el cliente da medidas, calcula el precio de inmediato.\\n4. SOLO ofrece productos del catálogo de TerraBlinds.\\n\\n== CATÁLOGO Y PRECIOS (por m²) ==\\nRoller Blackout $38.000/m² | Roller Screen $38.000/m² | Roller Sunscreen $38.000/m²\\nRoller Duo Traslúcido $45.000/m² | Roller Duo Blackout $45.000/m² | Roller Dual $56.000/m²\\nPersianas, Toldos, Cierres de Terraza: precio por cotización según medidas\\n\\nCÁLCULO: Ancho(m) × Alto(m) × precio/m² | Mínimo 1m² | Instalación gratis en RM\\nEjemplo: 1.5m × 2.0m Blackout = 3m² × $38.000 = $114.000\\n\\nWeb: terrablinds.cl | Cotizar: terrablinds.cl/quote | WhatsApp: +56935318909`,\n  ai_provider: 'groq',\n  ai_model: 'llama-3.3-70b-versatile',\n};\n\ntry {\n  const resp = await $http.request({\n    method: 'GET',\n    url: `${baseUrl}/internal/whatsapp/tenant-config?phone_number_id=${encodeURIComponent(phoneNumberId)}`,\n    headers: { 'X-API-Secret': apiSecret },\n  });\n  const data = resp && (resp.body || resp.data || resp);\n  if (data && data.subdomain) {\n    config = {\n      subdomain: data.subdomain,\n      whatsapp_token: data.whatsapp_token,\n      system_prompt: data.system_prompt || config.system_prompt,\n      ai_provider: data.ai_provider || 'groq',\n      ai_model: data.ai_model || 'llama-3.3-70b-versatile',\n    };\n  }\n} catch(e) {\n  // usa fallback\n}\n\nreturn [{ json: { ...($input.item.json), ...config, api_secret: apiSecret, base_url: baseUrl } }];"
+        "method": "GET",
+        "url": "=https://osw.conectaai.cl/api/v1/internal/whatsapp/tenant-config?phone_number_id={{ encodeURIComponent($json.phone_number_id) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Secret", "value": "n8n_omniflow_bb381df03a4fa5e2706c0e11fd468468" }
+          ]
+        },
+        "options": { "response": { "response": { "responseFormat": "json" } } }
       },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [840, 560],
       "id": "fetch-ai-config",
-      "name": "⚙️ Cargar Config IA desde OSW"
+      "name": "⚙️ Cargar Config IA desde OSW",
+      "continueOnFail": true
     },
     {
       "parameters": {
-        "jsCode": "// Auto-registra el contacto en OmniFlow CRM cuando llega un mensaje WA\n// No bloquea el flujo — errores se ignoran silenciosamente\nconst apiSecret = $json.api_secret;\nconst baseUrl = $json.base_url || 'https://osw.conectaai.cl/api/v1';\nconst subdomain = $json.subdomain;\nconst phone = $json.phone;\nconst contactName = $json.contact_name || 'Cliente WhatsApp';\n\ntry {\n  await $http.request({\n    method: 'POST',\n    url: `${baseUrl}/internal/contact/upsert`,\n    headers: { 'X-API-Secret': apiSecret, 'Content-Type': 'application/json' },\n    body: JSON.stringify({\n      subdomain,\n      external_id: phone,\n      name: contactName,\n      phone: '+' + phone,\n      source: 'whatsapp',\n    }),\n  });\n} catch(e) {\n  // non-blocking — ignore\n}\n\nreturn [{ json: $input.item.json }];"
+        "jsCode": "// Merge tenant config response with defaults\nconst apiSecret = 'n8n_omniflow_bb381df03a4fa5e2706c0e11fd468468';\nconst baseUrl = 'https://osw.conectaai.cl/api/v1';\nconst extracted = $('📋 Extraer Datos del Mensaje').item.json;\nconst cfg = $input.item.json; // Response from HTTP Request or error object\n\nconst subdomain = cfg.subdomain || 'osw';\nconst waToken = cfg.whatsapp_token || null;\nconst systemPrompt = cfg.system_prompt || 'Eres un asistente virtual amable. Responde en español.';\nconst aiProvider = cfg.ai_provider || 'groq';\nconst aiModel = cfg.ai_model || 'llama-3.3-70b-versatile';\n\nreturn [{\n  json: {\n    ...extracted,\n    subdomain,\n    whatsapp_token: waToken,\n    system_prompt: systemPrompt,\n    ai_provider: aiProvider,\n    ai_model: aiModel,\n    api_secret: apiSecret,\n    base_url: baseUrl,\n    has_token: !!(waToken),\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [840, 760],
+      "position": [1060, 560],
+      "id": "merge-config",
+      "name": "⚙️ Merge Config"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://osw.conectaai.cl/api/v1/internal/contact/upsert",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Secret", "value": "n8n_omniflow_bb381df03a4fa5e2706c0e11fd468468" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ subdomain: $json.subdomain, external_id: $json.phone, name: $json.contact_name || 'Cliente WhatsApp', phone: '+' + $json.phone, source: 'whatsapp' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1280, 760],
       "id": "upsert-contact",
-      "name": "👤 Registrar Contacto WA"
+      "name": "👤 Registrar Contacto WA",
+      "continueOnFail": true
     },
     {
       "parameters": {
@@ -120,7 +152,7 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1120, 560],
+      "position": [1280, 560],
       "id": "get-history",
       "name": "📚 Cargar Historial (Memoria)"
     },
@@ -141,7 +173,7 @@
       },
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1400, 560],
+      "position": [1560, 560],
       "id": "switch-provider",
       "name": "🔀 Seleccionar Proveedor IA"
     },
@@ -158,7 +190,7 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1680, 400],
+      "position": [1840, 400],
       "id": "call-openai",
       "name": "🤖 OpenAI",
       "credentials": {
@@ -178,7 +210,7 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1680, 720],
+      "position": [1840, 720],
       "id": "call-groq",
       "name": "⚡ Groq (Llama)",
       "credentials": {
@@ -189,22 +221,25 @@
       "parameters": {
         "assignments": {
           "assignments": [
-            { "id": "1", "name": "ai_response",     "value": "={{ $json.choices[0].message.content }}", "type": "string" },
-            { "id": "2", "name": "phone",            "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.phone }}", "type": "string" },
-            { "id": "3", "name": "phone_number_id",  "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.phone_number_id }}", "type": "string" },
-            { "id": "4", "name": "wamid",            "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.wamid }}", "type": "string" },
-            { "id": "5", "name": "user_message",     "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.message }}", "type": "string" },
-            { "id": "6", "name": "subdomain",        "value": "={{ $('⚙️ Cargar Config IA desde OSW').item.json.subdomain }}", "type": "string" },
-            { "id": "7", "name": "api_secret",       "value": "={{ $('⚙️ Cargar Config IA desde OSW').item.json.api_secret }}", "type": "string" },
-            { "id": "8", "name": "whatsapp_token",   "value": "={{ $('⚙️ Cargar Config IA desde OSW').item.json.whatsapp_token }}", "type": "string" },
-            { "id": "9", "name": "contact_name",     "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.contact_name }}", "type": "string" }
+            { "id": "1",  "name": "ai_response",     "value": "={{ $json.choices[0].message.content }}", "type": "string" },
+            { "id": "2",  "name": "phone",            "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.phone }}", "type": "string" },
+            { "id": "3",  "name": "phone_number_id",  "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.phone_number_id }}", "type": "string" },
+            { "id": "4",  "name": "wamid",            "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.wamid }}", "type": "string" },
+            { "id": "5",  "name": "user_message",     "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.message }}", "type": "string" },
+            { "id": "6",  "name": "subdomain",        "value": "={{ $('⚙️ Merge Config').item.json.subdomain }}", "type": "string" },
+            { "id": "7",  "name": "api_secret",       "value": "={{ $('⚙️ Merge Config').item.json.api_secret }}", "type": "string" },
+            { "id": "8",  "name": "whatsapp_token",   "value": "={{ $('⚙️ Merge Config').item.json.whatsapp_token }}", "type": "string" },
+            { "id": "9",  "name": "contact_name",     "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.contact_name }}", "type": "string" },
+            { "id": "10", "name": "base_url",         "value": "={{ $('⚙️ Merge Config').item.json.base_url || 'https://osw.conectaai.cl/api/v1' }}", "type": "string" },
+            { "id": "11", "name": "ai_model",         "value": "={{ $('⚙️ Merge Config').item.json.ai_model }}", "type": "string" },
+            { "id": "12", "name": "ai_provider",      "value": "={{ $('⚙️ Merge Config').item.json.ai_provider }}", "type": "string" }
           ]
         },
         "options": {}
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [1960, 560],
+      "position": [2120, 560],
       "id": "extract-response",
       "name": "💬 Extraer Respuesta IA"
     },
@@ -214,42 +249,19 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2240, 560],
+      "position": [2400, 560],
       "id": "save-history",
       "name": "💾 Guardar en Memoria"
     },
     {
       "parameters": {
-        "jsCode": "// ── Detectar y procesar comandos especiales de la IA ──────────────────────────\n// COTIZACION_WA: → guarda cotización en CRM, elimina tag del mensaje\n// ESCALAR_HUMANO → pausa el bot, notifica al agente, elimina tag del mensaje\n\nconst rawResponse = $json.ai_response || '';\nconst phone = $json.phone;\nconst subdomain = $json.subdomain;\nconst apiSecret = $json.api_secret;\nconst baseUrl = $json.base_url || 'https://osw.conectaai.cl/api/v1';\n\nlet cleanedResponse = rawResponse;\nlet shouldEscalate = false;\n\n// ── Detectar ESCALAR_HUMANO ──────────────────────────────────────────────────\nif (rawResponse.includes('ESCALAR_HUMANO')) {\n  shouldEscalate = true;\n  cleanedResponse = cleanedResponse.replace(/ESCALAR_HUMANO/g, '').trim();\n  try {\n    await $http.request({\n      method: 'POST',\n      url: `${baseUrl}/internal/whatsapp/handoff`,\n      headers: { 'X-API-Secret': apiSecret, 'Content-Type': 'application/json' },\n      body: JSON.stringify({ subdomain, phone: '+' + phone }),\n    });\n  } catch(e) { /* non-blocking */ }\n}\n\n// ── Detectar COTIZACION_WA: ──────────────────────────────────────────────────\nconst quoteMatch = rawResponse.match(/COTIZACION_WA:([\\s\\S]+?)(?=\\n\\nESCALAR_HUMANO|\\n\\n[A-Z]|$)/);\nif (quoteMatch) {\n  const quoteText = quoteMatch[1].trim();\n  // Extraer valor total si está presente (ej: $114.000)\n  const valueMatch = quoteText.match(/\\$\\s*([\\d]{1,3}(?:[.,]\\d{3})*)/);\n  const quoteValue = valueMatch\n    ? parseFloat(valueMatch[1].replace(/[.,]/g, ''))\n    : null;\n  try {\n    await $http.request({\n      method: 'POST',\n      url: `${baseUrl}/internal/quote/save`,\n      headers: { 'X-API-Secret': apiSecret, 'Content-Type': 'application/json' },\n      body: JSON.stringify({\n        subdomain,\n        external_id: phone,\n        quote_text: quoteText,\n        total_value: quoteValue,\n      }),\n    });\n  } catch(e) { /* non-blocking */ }\n  cleanedResponse = cleanedResponse.replace(/COTIZACION_WA:[\\s\\S]+?(?=\\n\\n[A-Z]|$)/, '').trim();\n}\n\n// Si el mensaje quedó vacío, usar respuesta de escalamiento o respuesta original\nif (!cleanedResponse) {\n  cleanedResponse = shouldEscalate\n    ? '¡Perfecto! Te estoy conectando con un asesor que te ayudará de inmediato. 👨‍💼'\n    : rawResponse;\n}\n\nreturn [{ json: { ...($input.item.json), ai_response: cleanedResponse, should_escalate: shouldEscalate } }];"
+        "jsCode": "// Clean AI response — detect and remove special tags, no HTTP calls\nconst rawResponse = $json.ai_response || '';\nlet cleanedResponse = rawResponse;\nlet shouldEscalate = false;\n\nif (rawResponse.includes('ESCALAR_HUMANO')) {\n  shouldEscalate = true;\n  cleanedResponse = cleanedResponse.replace(/ESCALAR_HUMANO/g, '').trim();\n}\n\nconst quoteMatch = rawResponse.match(/COTIZACION_WA:([\\s\\S]+?)(?=\\n\\nESCALAR_HUMANO|\\n\\n[A-Z]|$)/);\nlet quoteText = null;\nlet quoteValue = null;\nif (quoteMatch) {\n  quoteText = quoteMatch[1].trim();\n  const valueMatch = quoteText.match(/\\$\\s*([\\d]{1,3}(?:[.,]\\d{3})*)/);\n  quoteValue = valueMatch ? parseFloat(valueMatch[1].replace(/[.,]/g, '')) : null;\n  cleanedResponse = cleanedResponse.replace(/COTIZACION_WA:[\\s\\S]+?(?=\\n\\n[A-Z]|$)/, '').trim();\n}\n\nif (!cleanedResponse) {\n  cleanedResponse = shouldEscalate\n    ? '¡Perfecto! Te estoy conectando con un asesor. 👨‍💼'\n    : rawResponse;\n}\n\nreturn [{ json: { ...($input.item.json), ai_response: cleanedResponse, should_escalate: shouldEscalate, quote_text: quoteText, quote_value: quoteValue } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2520, 560],
+      "position": [2680, 560],
       "id": "detect-action",
       "name": "🎯 Detectar Acción"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=https://graph.facebook.com/v19.0/{{ $json.phone_number_id }}/messages",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "Authorization", "value": "=Bearer {{ $json.whatsapp_token }}" },
-            { "name": "Content-Type", "value": "application/json" }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ messaging_product: 'whatsapp', status: 'read', message_id: $json.wamid }) }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [2800, 400],
-      "id": "mark-read",
-      "name": "👁️ Marcar como Leído (✓✓)",
-      "continueOnFail": true
     },
     {
       "parameters": {
@@ -269,30 +281,33 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2800, 720],
+      "position": [2960, 560],
       "id": "send-whatsapp",
-      "name": "📤 Enviar Respuesta WhatsApp"
+      "name": "📤 Enviar Respuesta WhatsApp",
+      "continueOnFail": true
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://osw.conectaai.cl/api/v1/internal/whatsapp/inject",
+        "url": "https://osw.conectaai.cl/api/v1/internal/whatsapp/inject",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "X-API-Secret", "value": "={{ $json.api_secret }}" }
+            { "name": "X-API-Secret", "value": "n8n_omniflow_bb381df03a4fa5e2706c0e11fd468468" },
+            { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ subdomain: $json.subdomain, phone: $json.phone, content: $json.ai_response, sender_type: 'bot', contact_name: $json.contact_name }) }}",
-        "options": { "response": { "response": { "responseFormat": "json" } } }
+        "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [3080, 560],
+      "position": [3240, 560],
       "id": "log-crm",
-      "name": "🗂️ Registrar en OmniFlow CRM"
+      "name": "🗂️ Registrar en OmniFlow CRM",
+      "continueOnFail": true
     }
   ],
   "connections": {
@@ -317,6 +332,9 @@
       "main": [[ { "node": "⚙️ Cargar Config IA desde OSW", "type": "main", "index": 0 } ]]
     },
     "⚙️ Cargar Config IA desde OSW": {
+      "main": [[ { "node": "⚙️ Merge Config", "type": "main", "index": 0 } ]]
+    },
+    "⚙️ Merge Config": {
       "main": [[
         { "node": "📚 Cargar Historial (Memoria)", "type": "main", "index": 0 },
         { "node": "👤 Registrar Contacto WA", "type": "main", "index": 0 }
@@ -344,10 +362,7 @@
       "main": [[ { "node": "🎯 Detectar Acción", "type": "main", "index": 0 } ]]
     },
     "🎯 Detectar Acción": {
-      "main": [[
-        { "node": "👁️ Marcar como Leído (✓✓)", "type": "main", "index": 0 },
-        { "node": "📤 Enviar Respuesta WhatsApp", "type": "main", "index": 0 }
-      ]]
+      "main": [[ { "node": "📤 Enviar Respuesta WhatsApp", "type": "main", "index": 0 } ]]
     },
     "📤 Enviar Respuesta WhatsApp": {
       "main": [[ { "node": "🗂️ Registrar en OmniFlow CRM", "type": "main", "index": 0 } ]]

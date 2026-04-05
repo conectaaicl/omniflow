@@ -104,41 +104,19 @@ WHERE  id = '{workflow_id}';
     run_psql_file(sql_entity)
     print("[OK] workflow_entity updated")
 
-    # ── Find published version ID ────────────────────────────────────────────
-    pub_version_id = run_psql(
-        f"SELECT \"publishedVersionId\" FROM workflow_entity WHERE id = '{workflow_id}';"
-    )
-    print(f"[OK] Published version ID: {pub_version_id or '(none)'}")
-
-    # ── Update workflow_history (published version) ──────────────────────────
-    if pub_version_id:
-        sql_history = f"""
-UPDATE workflow_history
-SET    nodes       = '{nodes_escaped}'::jsonb,
-       connections = '{connections_escaped}'::jsonb,
-       updated_at  = NOW()
-WHERE  \"versionId\" = '{pub_version_id}';
-"""
-        out = run_psql_file(sql_history)
-        print(f"[OK] workflow_history updated (versionId={pub_version_id})")
-    else:
-        print("[WARN] No published version found — only workflow_entity was updated.")
-        print("       Open n8n, open this workflow, and click Save + Publish.")
-
-    # ── Also update ALL history rows for this workflow (belt + suspenders) ──
-    rows_updated = run_psql(
-        f"SELECT COUNT(*) FROM workflow_history WHERE \"workflowId\" = '{workflow_id}';"
-    )
-    if int(rows_updated or 0) > 1:
-        sql_all_history = f"""
+    # ── Update ALL workflow_history rows for this workflow ───────────────────
+    sql_history = f"""
 UPDATE workflow_history
 SET    nodes       = '{nodes_escaped}'::jsonb,
        connections = '{connections_escaped}'::jsonb,
        updated_at  = NOW()
 WHERE  \"workflowId\" = '{workflow_id}';
 """
-        run_psql_file(sql_all_history)
-        print(f"[OK] All {rows_updated} workflow_history rows updated")
+    run_psql_file(sql_history)
+    rows_updated = run_psql(
+        f"SELECT COUNT(*) FROM workflow_history WHERE \"workflowId\" = '{workflow_id}';"
+    )
+    print(f"[OK] workflow_history updated ({rows_updated} rows)")
 
     print()
     print("=" * 60)

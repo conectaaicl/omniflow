@@ -65,10 +65,26 @@ export const tenantAPI = {
 export const conversationsAPI = {
   list: () => api.get('/conversations/'),
   getMessages: (id: number) => api.get(`/conversations/${id}/messages`),
-  send: (id: number, content: string) =>
-    api.post(`/conversations/${id}/send`, null, { params: { content } }),
+  send: (id: number, content: string, contentType = 'text', mediaUrl?: string) =>
+    api.post(`/conversations/${id}/send`, null, { params: { content, content_type: contentType, media_url: mediaUrl } }),
   toggleHandoff: (id: number, botActive: boolean) =>
     api.patch(`/conversations/${id}/handoff`, { bot_active: botActive }),
+  saveNotes: (id: number, notes: string) =>
+    api.patch(`/conversations/${id}/notes`, { notes }),
+  assign: (id: number, userId: number | null) =>
+    api.patch(`/conversations/${id}/assign`, { user_id: userId }),
+  getCannedResponses: () => api.get('/conversations/canned-responses'),
+  createCannedResponse: (data: { shortcut: string; title: string; content: string }) =>
+    api.post('/conversations/canned-responses', data),
+  deleteCannedResponse: (id: number) => api.delete(`/conversations/canned-responses/${id}`),
+  getWhatsappTemplates: () => api.get('/conversations/whatsapp-templates'),
+  sendWhatsappTemplate: (data: { conversation_id: number; template_name: string; language_code?: string; components?: unknown[] }) =>
+    api.post('/conversations/whatsapp-templates/send', data),
+  importContacts: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/conversations/contacts/import-csv', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
 }
 
 // ── CRM ──────────────────────────────────────────────────────

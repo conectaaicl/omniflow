@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     MP_ACCESS_TOKEN: Optional[str] = None
     MP_PUBLIC_KEY: Optional[str] = None
     FRONTEND_URL: str = "https://osw.conectaai.cl"
-    BACKEND_URL: str = "https://osw.conectaai.cl"  # set to API base in production (e.g. https://api.conectaai.cl)
+    BACKEND_URL: str = "https://osw.conectaai.cl"
 
     REDIS_URL: str = "redis://omniflow_redis:6379/0"
 
@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_DB: str = "omniflow"
     SQLALCHEMY_DATABASE_URI: Optional[str] = None
+
+    # MailSaaS integration
+    MAILSAAS_URL: str = "https://mail.conectaai.cl"
+    MAILSAAS_API_KEY: str = ""
 
     @property
     def database_url(self) -> str:

@@ -29,17 +29,9 @@ server {
         proxy_read_timeout 120s;
     }
 
-    # ── n8n Automation Editor ────────────────────────────
+    # ── n8n Automation Editor (redirige al subdominio dedicado) ──
     location /n8n/ {
-        proxy_pass http://127.0.0.1:5678/n8n/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 300s;
+        return 301 https://n8n.conectaai.cl/;
     }
 
     # ── Frontend (Next.js) ───────────────────────────────

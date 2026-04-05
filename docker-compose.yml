@@ -98,13 +98,26 @@ services:
       - N8N_PORT=5678
       - N8N_PROTOCOL=https
       - NODE_ENV=production
-      - WEBHOOK_URL=https://${N8N_HOST}/n8n/
-      - N8N_PATH=/n8n/
-      - N8N_EDITOR_BASE_URL=https://${N8N_HOST}/n8n/
+      - WEBHOOK_URL=https://${N8N_HOST}/
+      - N8N_EDITOR_BASE_URL=https://${N8N_HOST}/
+      # Reverse proxy fix (resuelve ERR_ERL_UNEXPECTED_X_FORWARDED_FOR)
+      - N8N_TRUST_PROXY=true
+      # WebSocket push para ejecuciones en tiempo real (SSE falla con proxy inverso)
+      - N8N_PUSH_BACKEND=websocket
+      # Fix: origin check para proxy inverso
+      - N8N_ORIGIN_CHECK_ENABLED=false
+      # PostgreSQL (producción)
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=db
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=${POSTGRES_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     networks:
       - omniflow_net
 

@@ -14,7 +14,7 @@ from typing import Optional
 
 from app.core.database import get_db
 from app.core.security import get_current_user, get_password_hash
-from app.models.core import User, Role, Tenant
+from app.models.core import User, Tenant
 
 router = APIRouter()
 
@@ -196,5 +196,4 @@ def list_roles(
     _: User = Depends(_require_admin),
 ):
     """List available roles."""
-    roles = db.query(Role).order_by(Role.id.asc()).all()
-    return [{"id": r.id, "name": r.name} for r in roles]
+    return [{"id": 1, "name": "admin"}, {"id": 2, "name": "agent"}, {"id": 3, "name": "viewer"}]
