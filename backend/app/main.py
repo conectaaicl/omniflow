@@ -1,5 +1,8 @@
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+import asyncio
+import httpx
 from app.core.config import settings
 from app.api.v1.router import api_router
 from app.core.database import engine, Base
@@ -143,9 +146,71 @@ def _migrate_tenant_schemas():
 _migrate_tenant_schemas()
 
 
+async def _whatsapp_token_refresh_loop():
+    """
+    Background task: every 45 days, exchange WhatsApp tokens for fresh 60-day tokens
+    for all tenants that have meta_app_id, meta_app_secret, and whatsapp_access_token set.
+    Runs immediately on startup so we catch tokens close to expiry, then every 45 days.
+    """
+    INTERVAL_SECONDS = 45 * 24 * 3600  # 45 days
+    while True:
+        await asyncio.sleep(5)  # brief delay after startup before first run
+        try:
+            from app.core.database import SessionLocal
+            from app.models.core import Tenant
+            db = SessionLocal()
+            try:
+                tenants = db.query(Tenant).filter(Tenant.is_active == True).all()
+                async with httpx.AsyncClient(timeout=10) as client:
+                    for tenant in tenants:
+                        s = tenant.settings
+                        if not s:
+                            continue
+                        if not (s.whatsapp_access_token and s.meta_app_id and s.meta_app_secret):
+                            continue
+                        try:
+                            r = await client.get(
+                                "https://graph.facebook.com/oauth/access_token",
+                                params={
+                                    "grant_type": "fb_exchange_token",
+                                    "client_id": s.meta_app_id,
+                                    "client_secret": s.meta_app_secret,
+                                    "fb_exchange_token": s.whatsapp_access_token,
+                                },
+                            )
+                            data = r.json()
+                            if "access_token" in data:
+                                s.whatsapp_access_token = data["access_token"]
+                                db.commit()
+                                days = round(data.get("expires_in", 5183944) / 86400)
+                                print(f"[token-refresh] Tenant {tenant.subdomain}: token refreshed, expires in {days}d", flush=True)
+                            else:
+                                err = data.get("error", {}).get("message", "unknown")
+                                print(f"[token-refresh] Tenant {tenant.subdomain}: refresh failed — {err}", flush=True)
+                        except Exception as e:
+                            print(f"[token-refresh] Tenant {tenant.subdomain}: error — {e}", flush=True)
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"[token-refresh] Loop error: {e}", flush=True)
+        await asyncio.sleep(INTERVAL_SECONDS)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(_whatsapp_token_refresh_loop())
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    lifespan=lifespan,
 )
 
 # Set all CORS enabled origins

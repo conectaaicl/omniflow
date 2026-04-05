@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import json
 import re
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
@@ -20,6 +21,8 @@ from app.core.database import get_db, tenant_db_session
 from app.models.core import Tenant, TenantSettings
 from app.services.crm import ingest_lead
 from app.services.automation import trigger_n8n_workflow
+from app.services.messaging import send_whatsapp
+from app.api.v1.endpoints.webchat import get_ai_reply
 
 router = APIRouter()
 
@@ -42,15 +45,78 @@ def _find_tenant(db: Session, **kwargs):
 
 
 async def _ingest(db, tenant, settings, lead_data: dict):
-    """Save to DB, then fire n8n workflow."""
+    """Save to DB, generate AI reply if WhatsApp, fire n8n workflow."""
+    from app.core.config import settings as app_settings
+
     with tenant_db_session(tenant.schema_name) as tdb:
         contact, conversation = ingest_lead(tdb, lead_data, tenant.id)
         cid, cvid = contact.id, conversation.id
 
-    if settings and settings.n8n_url and settings.n8n_webhook_path:
+        # Build conversation history for AI (last 14 messages)
+        from app.models.tenant import Message, Conversation
+        history = (
+            tdb.query(Message)
+            .filter(Message.conversation_id == cvid)
+            .order_by(Message.timestamp.asc())
+            .limit(14)
+            .all()
+        )
+        ai_messages = [
+            {"role": "user" if m.sender_type == "contact" else "assistant", "content": m.content}
+            for m in history
+        ]
+        bot_active = getattr(conversation, "bot_active", True)
+        is_first_message = sum(1 for m in history if m.sender_type == "contact") <= 1
+
+    # ── AI reply for WhatsApp channel ────────────────────────────────────────
+    source = lead_data.get("source")
+    if source == "whatsapp" and bot_active and settings:
+        ai_key = (getattr(settings, "openai_api_key", None)) or app_settings.GROQ_API_KEY or None
+        ai_model = getattr(settings, "ai_model", None) or "llama-3.1-8b-instant"
+        system_prompt = getattr(settings, "webchat_system_prompt", None) or (
+            "Eres un asistente de ventas amable. Responde siempre en español."
+        )
+        wa_phone_id = getattr(settings, "whatsapp_phone_id", None)
+        wa_token = getattr(settings, "whatsapp_access_token", None)
+        contact_phone = lead_data.get("phone")
+
+        if ai_key and wa_phone_id and wa_token and contact_phone:
+            bot_reply = await get_ai_reply(ai_key, ai_messages, system_prompt, ai_model)
+            if bot_reply:
+                # Detect human escalation keyword
+                needs_handoff = "ESCALAR_HUMANO" in bot_reply
+                clean_reply = bot_reply.replace("ESCALAR_HUMANO", "").strip()
+                if needs_handoff:
+                    clean_reply = "Un momento, te voy a conectar con un agente. 🙋"
+
+                sent = await send_whatsapp(wa_phone_id, wa_token, contact_phone, clean_reply)
+                if sent:
+                    with tenant_db_session(tenant.schema_name) as tdb:
+                        from app.models.tenant import Message, Conversation
+                        bot_msg = Message(
+                            conversation_id=cvid,
+                            sender_type="bot",
+                            content=clean_reply,
+                            timestamp=datetime.utcnow(),
+                        )
+                        tdb.add(bot_msg)
+                        conv = tdb.query(Conversation).filter(Conversation.id == cvid).first()
+                        if conv:
+                            conv.last_message = f"[Bot] {clean_reply[:80]}"
+                            conv.updated_at = datetime.utcnow()
+                            if needs_handoff:
+                                conv.bot_active = False
+                        tdb.commit()
+                    if needs_handoff:
+                        print(f"[whatsapp-bot] HANDOFF → bot silenciado para {contact_phone}", flush=True)
+                    else:
+                        print(f"[whatsapp-bot] replied to {contact_phone}", flush=True)
+
+    # ── Trigger n8n on first message ─────────────────────────────────────────
+    if settings and settings.n8n_url and settings.n8n_webhook_path and is_first_message:
         payload = {
             "tenant_id": tenant.id,
-            "channel": lead_data.get("source"),
+            "channel": source,
             "contact": {
                 "id": cid,
                 "name": lead_data.get("name"),
@@ -84,7 +150,19 @@ async def verify_whatsapp(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/whatsapp")
 async def handle_whatsapp(request: Request, db: Session = Depends(get_db)):
-    body = await request.json()
+    from app.core.config import settings as app_settings
+    raw_body = await request.body()
+    # Validate X-Hub-Signature-256 if META_WEBHOOK_SECRET is configured
+    if app_settings.META_WEBHOOK_SECRET:
+        sig_header = request.headers.get("X-Hub-Signature-256", "")
+        expected = "sha256=" + hmac.new(
+            app_settings.META_WEBHOOK_SECRET.encode(),
+            raw_body,
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(sig_header, expected):
+            raise HTTPException(status_code=403, detail="Invalid webhook signature")
+    body = json.loads(raw_body)
     entry = body.get("entry", [{}])[0]
     changes = entry.get("changes", [{}])[0]
     value = changes.get("value", {})
