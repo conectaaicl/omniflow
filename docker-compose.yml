@@ -66,6 +66,8 @@ services:
       - MAILSAAS_URL=${MAILSAAS_URL}
       - MAILSAAS_API_KEY=${MAILSAAS_API_KEY}
       - N8N_URL=${N8N_URL}
+    volumes:
+      - /var/www/omniflow/uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
