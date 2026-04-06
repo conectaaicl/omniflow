@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
+import Script from 'next/script'
 import './globals.css'
 import ConditionalLayout from '@/components/ConditionalLayout'
 import { BrandingProvider } from '@/components/providers/BrandingProvider'
@@ -18,6 +19,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <BrandingProvider>
           <ConditionalLayout>{children}</ConditionalLayout>
         </BrandingProvider>
+        <Script
+          src="https://osw.conectaai.cl/widget.js"
+          data-tenant="platform"
+          strategy="lazyOnload"
+        />
       </body>
     </html>
   )
