@@ -57,7 +57,7 @@ export const tenantAPI = {
   updateSettings: (data: Record<string, unknown>) => api.patch('/tenants/settings', data),
   getDashboardStats: () => api.get('/tenants/dashboard-stats'),
   register: (data: Record<string, unknown>) => api.post('/tenants/register', data),
-  testWhatsapp: (to: string) => api.post('/tenants/test-whatsapp', null, { params: { to } }),
+  testWhatsapp: (to: string) => api.post('/tenants/test-whatsapp', { to }),
   refreshWhatsappToken: () => api.post('/tenants/refresh-whatsapp-token'),
 }
 

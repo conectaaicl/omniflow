@@ -34,20 +34,29 @@ async def send_whatsapp(phone_number_id: str, access_token: str, to: str, messag
 
 # ── Instagram DM ────────────────────────────────────────────────────────────
 
-async def send_instagram(page_access_token: str, recipient_id: str, message: str) -> bool:
-    """Send an Instagram Direct Message via Meta Graph API."""
-    url = "https://graph.facebook.com/v18.0/me/messages"
-    headers = {"Authorization": f"Bearer {page_access_token}"}
+async def send_instagram(access_token: str, recipient_id: str, message: str, ig_account_id: str = "me") -> bool:
+    """Send an Instagram Direct Message via Instagram Graph API."""
+    # New Instagram API uses graph.instagram.com with IGAAN tokens
+    url = "https://graph.instagram.com/v20.0/me/messages"
+    headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
     payload = {
         "recipient": {"id": recipient_id},
         "message": {"text": message},
+        "messaging_type": "RESPONSE",
     }
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.post(url, json=payload, headers=headers)
-            return r.status_code == 200
+            print(f"[Instagram send] status={r.status_code} body={r.text[:300]}", flush=True)
+            if r.status_code == 200:
+                return True
+            # Fallback: try via graph.facebook.com with page token
+            url2 = f"https://graph.facebook.com/v20.0/{ig_account_id}/messages"
+            r2 = await client.post(url2, json=payload, headers=headers)
+            print(f"[Instagram send fb fallback] status={r2.status_code} body={r2.text[:300]}", flush=True)
+            return r2.status_code == 200
     except Exception as e:
-        print(f"[Instagram send error] {e}")
+        print(f"[Instagram send error] {e}", flush=True)
         return False
 
 

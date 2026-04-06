@@ -90,10 +90,14 @@ class TenantSettings(Base):
     ai_model = Column(String, nullable=True)
 
     # Meta App credentials (for token refresh)
+    wa_token_encrypted = Column(String, nullable=True)
+    wa_status = Column(String, nullable=True, default="disconnected")
+    waba_id = Column(String, nullable=True)
     meta_app_id = Column(String, nullable=True)
     meta_app_secret = Column(String, nullable=True)
 
     # n8n
+    n8n_workflow_ids = Column(JSON, nullable=True, default=dict)
     n8n_url = Column(String, nullable=True)
     n8n_webhook_path = Column(String, nullable=True)
 

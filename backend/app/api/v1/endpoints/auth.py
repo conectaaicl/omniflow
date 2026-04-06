@@ -81,7 +81,7 @@ def get_me(current_user: User = Depends(security.get_current_user)):
         "full_name": current_user.full_name,
         "is_superuser": current_user.is_superuser,
         "tenant_id": current_user.tenant_id,
-        "role": current_user.role.name if current_user.role else ("superadmin" if current_user.is_superuser else "admin"),
+        "role": getattr(getattr(current_user, "role", None), "name", None) or ("superadmin" if current_user.is_superuser else "admin"),
     }
 
 

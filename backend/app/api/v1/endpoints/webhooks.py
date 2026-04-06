@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import json
 import re
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
@@ -20,6 +21,8 @@ from app.core.database import get_db, tenant_db_session
 from app.models.core import Tenant, TenantSettings
 from app.services.crm import ingest_lead
 from app.services.automation import trigger_n8n_workflow
+from app.services.messaging import send_whatsapp
+from app.api.v1.endpoints.webchat import get_ai_reply
 
 router = APIRouter()
 
@@ -42,15 +45,79 @@ def _find_tenant(db: Session, **kwargs):
 
 
 async def _ingest(db, tenant, settings, lead_data: dict):
-    """Save to DB, then fire n8n workflow."""
+    """Save to DB, generate AI reply if WhatsApp, fire n8n workflow."""
+    from app.core.config import settings as app_settings
+
     with tenant_db_session(tenant.schema_name) as tdb:
         contact, conversation = ingest_lead(tdb, lead_data, tenant.id)
         cid, cvid = contact.id, conversation.id
 
-    if settings and settings.n8n_url and settings.n8n_webhook_path:
-        payload = {
+        # Build conversation history for AI (last 14 messages)
+        from app.models.tenant import Message, Conversation
+        history = list(reversed(
+            tdb.query(Message)
+            .filter(Message.conversation_id == cvid)
+            .order_by(Message.timestamp.desc())
+            .limit(14)
+            .all()
+        ))
+        ai_messages = [
+            {"role": "user" if m.sender_type == "contact" else "assistant", "content": m.content}
+            for m in history
+            if m.content
+        ]
+        bot_active = getattr(conversation, "bot_active", True)
+        is_first_message = sum(1 for m in history if m.sender_type == "contact") <= 1
+
+    # ── AI reply for WhatsApp channel ────────────────────────────────────────
+    source = lead_data.get("source")
+    if source == "whatsapp" and bot_active and settings:
+        ai_key = (getattr(settings, "openai_api_key", None)) or app_settings.GROQ_API_KEY or None
+        ai_model = getattr(settings, "ai_model", None) or "llama-3.1-8b-instant"
+        system_prompt = getattr(settings, "webchat_system_prompt", None) or (
+            "Eres un asistente de ventas amable. Responde siempre en español."
+        )
+        wa_phone_id = getattr(settings, "whatsapp_phone_id", None)
+        wa_token = getattr(settings, "whatsapp_access_token", None)
+        contact_phone = lead_data.get("phone")
+
+        if ai_key and wa_phone_id and wa_token and contact_phone:
+            bot_reply = await get_ai_reply(ai_key, ai_messages, system_prompt, ai_model)
+            if bot_reply:
+                # Detect human escalation keyword
+                needs_handoff = "ESCALAR_HUMANO" in bot_reply
+                clean_reply = bot_reply.replace("ESCALAR_HUMANO", "").strip()
+                if needs_handoff:
+                    clean_reply = "Un momento, te voy a conectar con un agente. 🙋"
+
+                sent = await send_whatsapp(wa_phone_id, wa_token, contact_phone, clean_reply)
+                if sent:
+                    with tenant_db_session(tenant.schema_name) as tdb:
+                        from app.models.tenant import Message, Conversation
+                        bot_msg = Message(
+                            conversation_id=cvid,
+                            sender_type="bot",
+                            content=clean_reply,
+                            timestamp=datetime.utcnow(),
+                        )
+                        tdb.add(bot_msg)
+                        conv = tdb.query(Conversation).filter(Conversation.id == cvid).first()
+                        if conv:
+                            conv.last_message = f"[Bot] {clean_reply[:80]}"
+                            conv.updated_at = datetime.utcnow()
+                            if needs_handoff:
+                                conv.bot_active = False
+                        tdb.commit()
+                    if needs_handoff:
+                        print(f"[whatsapp-bot] HANDOFF → bot silenciado para {contact_phone}", flush=True)
+                    else:
+                        print(f"[whatsapp-bot] replied to {contact_phone}", flush=True)
+
+    # ── Trigger n8n on first message ─────────────────────────────────────────
+    if settings and settings.n8n_url and settings.n8n_webhook_path and is_first_message:
+        n8n_payload = {
             "tenant_id": tenant.id,
-            "channel": lead_data.get("source"),
+            "channel": source,
             "contact": {
                 "id": cid,
                 "name": lead_data.get("name"),
@@ -62,7 +129,88 @@ async def _ingest(db, tenant, settings, lead_data: dict):
                 "conversation_id": cvid,
             },
         }
-        await trigger_n8n_workflow(settings, payload)
+        await trigger_n8n_workflow(settings, n8n_payload)
+
+    # ── AI reply for Facebook Messenger ──────────────────────────────────────
+    if source == "facebook" and bot_active and settings:
+        ai_key = (getattr(settings, "openai_api_key", None)) or app_settings.GROQ_API_KEY or None
+        ai_model = getattr(settings, "ai_model", None) or "llama-3.1-8b-instant"
+        system_prompt = getattr(settings, "webchat_system_prompt", None) or (
+            "Eres un asistente de ventas amable. Responde siempre en español."
+        )
+        fb_token = getattr(settings, "facebook_access_token", None)
+        psid = lead_data.get("external_id")
+        if ai_key and fb_token and psid:
+            bot_reply = await get_ai_reply(ai_key, ai_messages, system_prompt, ai_model)
+            if bot_reply:
+                needs_handoff = "ESCALAR_HUMANO" in bot_reply
+                clean_reply = bot_reply.replace("ESCALAR_HUMANO", "").strip()
+                if needs_handoff:
+                    clean_reply = "Un momento, te voy a conectar con un agente. 🙋"
+                from app.services.messaging import send_facebook
+                sent = await send_facebook(fb_token, psid, clean_reply)
+                if sent:
+                    with tenant_db_session(tenant.schema_name) as tdb:
+                        from app.models.tenant import Message, Conversation
+                        tdb.add(Message(conversation_id=cvid, sender_type="bot", content=clean_reply, timestamp=datetime.utcnow()))
+                        conv = tdb.query(Conversation).filter(Conversation.id == cvid).first()
+                        if conv:
+                            conv.last_message = f"[Bot] {clean_reply[:80]}"
+                            conv.updated_at = datetime.utcnow()
+                            if needs_handoff:
+                                conv.bot_active = False
+                        tdb.commit()
+                    print(f"[facebook-bot] {'HANDOFF' if needs_handoff else 'replied'} to {psid}", flush=True)
+
+    # ── AI reply for Instagram DMs ────────────────────────────────────────────
+    if source == "instagram" and bot_active and settings:
+        ai_key = (getattr(settings, "openai_api_key", None)) or app_settings.GROQ_API_KEY or None
+        ai_model = getattr(settings, "ai_model", None) or "llama-3.1-8b-instant"
+        system_prompt = getattr(settings, "webchat_system_prompt", None) or (
+            "Eres un asistente de ventas amable. Responde siempre en español."
+        )
+        ig_token = getattr(settings, "instagram_access_token", None) or getattr(settings, "facebook_access_token", None)
+        sender_id = lead_data.get("external_id")
+        if ai_key and ig_token and sender_id:
+            bot_reply = await get_ai_reply(ai_key, ai_messages, system_prompt, ai_model)
+            if bot_reply:
+                needs_handoff = "ESCALAR_HUMANO" in bot_reply
+                clean_reply = bot_reply.replace("ESCALAR_HUMANO", "").strip()
+                if needs_handoff:
+                    clean_reply = "Un momento, te voy a conectar con un agente. 🙋"
+                from app.services.messaging import send_instagram
+                ig_account_id = getattr(settings, "instagram_page_id", "me") or "me"
+                sent = await send_instagram(ig_token, sender_id, clean_reply, ig_account_id)
+                if sent:
+                    with tenant_db_session(tenant.schema_name) as tdb:
+                        from app.models.tenant import Message, Conversation
+                        tdb.add(Message(conversation_id=cvid, sender_type="bot", content=clean_reply, timestamp=datetime.utcnow()))
+                        conv = tdb.query(Conversation).filter(Conversation.id == cvid).first()
+                        if conv:
+                            conv.last_message = f"[Bot] {clean_reply[:80]}"
+                            conv.updated_at = datetime.utcnow()
+                            if needs_handoff:
+                                conv.bot_active = False
+                        tdb.commit()
+                    print(f"[instagram-bot] {'HANDOFF' if needs_handoff else 'replied'} to {sender_id}", flush=True)
+
+    # ── Follow-up n8n para todos los canales en primer mensaje ───────────────
+    if source in ("whatsapp", "facebook", "instagram") and is_first_message and settings and settings.n8n_url:
+        followup_url = f"{settings.n8n_url.rstrip('/')}/webhook/followup-lead"
+        followup_payload = {
+            "phone": lead_data.get("phone"),
+            "contact_name": lead_data.get("name"),
+            "subdomain": tenant.subdomain,
+            "email": lead_data.get("email") or "",
+            "source": source,
+            "external_id": lead_data.get("external_id") or "",
+        }
+        import httpx as _httpx
+        try:
+            async with _httpx.AsyncClient(timeout=5) as client:
+                await client.post(followup_url, json=followup_payload)
+        except Exception as e:
+            print(f"[followup] Could not trigger follow-up for {source}: {e}", flush=True)
 
 
 # ── WhatsApp ─────────────────────────────────────────────────────────────────

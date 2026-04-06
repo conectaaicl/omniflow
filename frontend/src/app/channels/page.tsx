@@ -11,6 +11,7 @@ const C = {
 }
 
 const META_APP_ID = process.env.NEXT_PUBLIC_META_APP_ID || ''
+const META_CONFIG_ID = process.env.NEXT_PUBLIC_META_CONFIG_ID || ''
 
 // ─── Shared UI ────────────────────────────────────────────────────────────────
 function StatusMsg({ msg }: { msg: string }) {
@@ -116,6 +117,14 @@ function WhatsAppCard({ status, onRefresh }: { status: any; onRefresh: () => voi
   useEffect(() => {
     if (scriptRef.current) return
     scriptRef.current = true
+    ;(window as any).fbAsyncInit = function () {
+      ;(window as any).FB.init({
+        appId: process.env.NEXT_PUBLIC_META_APP_ID,
+        cookie: true,
+        xfbml: true,
+        version: 'v18.0',
+      })
+    }
     const script = document.createElement('script')
     script.src = 'https://connect.facebook.net/en_US/sdk.js'
     script.async = true
@@ -142,7 +151,7 @@ function WhatsAppCard({ status, onRefresh }: { status: any; onRefresh: () => voi
         setConnecting(false)
       },
       {
-        config_id: META_APP_ID,
+        config_id: META_CONFIG_ID,
         response_type: 'code',
         override_default_response_type: true,
         extras: { setup: {}, featureType: '', sessionInfoVersion: '3' },

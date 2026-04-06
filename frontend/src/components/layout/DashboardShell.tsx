@@ -1,4 +1,5 @@
 'use client'
+import api from '@/lib/api'
 
 import React, { useEffect, useState, useCallback } from 'react'
 import { useBranding } from '@/components/providers/BrandingProvider'
@@ -69,6 +70,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
     const token = localStorage.getItem('omniflow_token')
     if (!token) { router.push('/login'); return }
     if (!decodeJwt(token)) { router.push('/login'); return }
+    // Load from cache immediately for fast render
     const cached = localStorage.getItem('omniflow_user')
     if (cached) {
       try {
@@ -78,6 +80,15 @@ export default function DashboardShell({ children }: { children: React.ReactNode
         setUser({ name: nm, email: u.email, initials, role: u.role || 'admin', is_superuser: !!u.is_superuser })
       } catch { /* */ }
     }
+    // Always refresh from API to get latest is_superuser flag
+    api.get('/auth/me').then((r: any) => {
+      const u = r.data
+      const nm = u.full_name || u.email || 'Usuario'
+      const initials = nm.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2)
+      const fresh = { name: nm, email: u.email, initials, role: u.role || 'admin', is_superuser: !!u.is_superuser }
+      setUser(fresh)
+      localStorage.setItem('omniflow_user', JSON.stringify(u))
+    }).catch(() => {})
   }, [router])
 
   useEffect(() => {
@@ -196,10 +207,11 @@ export default function DashboardShell({ children }: { children: React.ReactNode
                 </div>
               )}
               <button onClick={handleLogout} title="Cerrar sesión"
-                className="flex-shrink-0 p-1.5 rounded-lg text-slate-700 hover:text-red-400 hover:bg-red-500/10 transition-all">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                className="flex-shrink-0 flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-all text-[11px] font-semibold">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                   <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
+                Salir
               </button>
             </div>
           )}
