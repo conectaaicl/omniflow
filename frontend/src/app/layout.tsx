@@ -21,7 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </BrandingProvider>
         <Script
           src="https://osw.conectaai.cl/widget.js"
-          data-tenant="platform"
+          data-tenant="osw"
           strategy="lazyOnload"
         />
       </body>
