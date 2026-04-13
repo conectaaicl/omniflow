@@ -76,7 +76,7 @@ async def send_instagram(access_token: str, recipient_id: str, message: str, ig_
             )
             if r.status_code == 200:
                 return True
-            print(f"[Instagram IG API {r.status_code}] {r.text[:200]}")
+            print(f"[Instagram IG API {r.status_code}] {r.text[:200]}", flush=True)
             # Fallback: Facebook Graph API (works with EAA... Page tokens)
             r2 = await client.post(
                 f"https://graph.facebook.com/v20.0/{ig_account_id}/messages",
@@ -85,10 +85,10 @@ async def send_instagram(access_token: str, recipient_id: str, message: str, ig_
             )
             if r2.status_code == 200:
                 return True
-            print(f"[Instagram FB fallback {r2.status_code}] {r2.text[:200]}")
+            print(f"[Instagram FB fallback {r2.status_code}] {r2.text[:200]}", flush=True)
             return False
     except Exception as e:
-        print(f"[Instagram send error] {e}")
+        print(f"[Instagram send error] {e}", flush=True)
         return False
 
 

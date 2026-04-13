@@ -510,6 +510,7 @@ async def connect_telegram(
     # Register webhook so Telegram sends updates to our backend
     from app.core.config import settings as app_settings
     webhook_url = f"{app_settings.BACKEND_URL}/api/v1/webhooks/telegram"
+    wh_ok = False
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             wr = await client.post(
@@ -521,7 +522,6 @@ async def connect_telegram(
                 print(f"[Telegram setWebhook] {wr.text[:200]}")
     except Exception as e:
         print(f"[Telegram setWebhook error] {e}")
-        wh_ok = False
 
     return {
         "status": "connected",

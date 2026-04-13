@@ -12,16 +12,21 @@ Endpoints:
   GET  /internal/contact/list?subdomain=osw&limit=50   — recent contacts
   GET  /internal/ai-config?subdomain=osw                — get AI config (system_prompt, model, provider)
 """
+import json
+import os
+import shutil
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File, Form
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.core.config import settings
 from app.core.database import get_db, tenant_db_session
-from app.models.core import Tenant, TenantSettings
+from app.models.core import Tenant, TenantSettings, User
 from app.models.tenant import Contact, Conversation, Message, Deal, PipelineStage
+from app.core import security as _security
 
 router = APIRouter()
 
@@ -366,6 +371,7 @@ def get_whatsapp_tenant_config(
         )
     tenant = db.query(Tenant).filter(Tenant.id == s.tenant_id).first()
     return {
+        "tenant_id": s.tenant_id,
         "subdomain": tenant.subdomain if tenant else "unknown",
         "whatsapp_token": s.whatsapp_access_token,
         "whatsapp_phone_id": s.whatsapp_phone_id,
@@ -489,3 +495,178 @@ def whatsapp_handoff(
         conv.status = "pending"   # highlights in agent inbox
         tdb.commit()
         return {"ok": True, "conversation_id": conv.id, "contact_name": contact.name}
+
+
+# ── Knowledge Search (for n8n AI context injection) ────────────────────────────
+
+from fastapi import Request, Query as FQuery
+from app.services.embeddings import get_embedding_sync
+from sqlalchemy import text as sa_text
+
+@router.get("/knowledge-search")
+def knowledge_search_internal(
+    request: Request,
+    tenant_id: int = FQuery(...),
+    q: str = FQuery(..., min_length=1),
+    top_k: int = FQuery(3, le=5),
+    db: Session = Depends(get_db),
+):
+    """
+    Semantic search over a tenant's knowledge base.
+    Called by n8n before passing message to AI — injects business context.
+    Auth: X-Internal-Secret header matching N8N_API_SECRET.
+    """
+    secret = request.headers.get("X-Internal-Secret", "")
+    if not secret or secret != settings.N8N_API_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    emb = get_embedding_sync(q)
+    emb_str = f"[{','.join(str(x) for x in emb)}]"
+
+    rows = db.execute(
+        sa_text("""
+            SELECT contenido,
+                   1 - (embedding <=> CAST(:emb AS vector)) AS similarity
+            FROM knowledge_base
+            WHERE tenant_id = :tid
+              AND embedding IS NOT NULL
+              AND (1 - (embedding <=> CAST(:emb AS vector))) > 0.35
+            ORDER BY embedding <=> CAST(:emb AS vector)
+            LIMIT :k
+        """),
+        {"tid": tenant_id, "emb": emb_str, "k": top_k},
+    ).fetchall()
+
+    if not rows:
+        return {"context": "", "found": 0}
+
+    context_parts = [row.contenido for row in rows]
+    context = "\n\n---\n\n".join(context_parts)
+    return {
+        "context": context,
+        "found": len(rows),
+        "similarities": [round(float(row.similarity), 3) for row in rows],
+    }
+
+
+# ── WhatsApp Follow-up Send (for n8n automated sequences) ─────────────────────
+
+class SendFollowup(BaseModel):
+    subdomain: str
+    phone: str
+    content: str
+
+
+@router.post("/whatsapp/send-followup")
+async def send_whatsapp_followup(
+    payload: SendFollowup,
+    db: Session = Depends(get_db),
+    _: str = Depends(_require_secret),
+):
+    """
+    Send a WhatsApp message from an n8n follow-up sequence.
+    Checks bot_active before sending — skips if an agent has taken over.
+    Logs message to conversation on success.
+    """
+    tenant = _get_tenant_by_subdomain(payload.subdomain, db)
+    ts = db.query(TenantSettings).filter(TenantSettings.tenant_id == tenant.id).first()
+    if not ts or not ts.whatsapp_phone_id or not ts.whatsapp_access_token:
+        raise HTTPException(status_code=400, detail="WhatsApp not configured for this tenant")
+
+    phone_normalized = payload.phone if payload.phone.startswith("+") else f"+{payload.phone}"
+
+    # Check bot_active BEFORE sending
+    conv_id = None
+    with tenant_db_session(tenant.schema_name) as tdb:
+        contact = tdb.query(Contact).filter(
+            Contact.phone.in_([phone_normalized, payload.phone])
+        ).first()
+        if not contact:
+            return {"sent": False, "reason": "contact_not_found"}
+
+        conv = (
+            tdb.query(Conversation)
+            .filter(
+                Conversation.contact_id == contact.id,
+                Conversation.channel == "whatsapp",
+            )
+            .order_by(Conversation.updated_at.desc())
+            .first()
+        )
+        if not conv:
+            return {"sent": False, "reason": "no_conversation"}
+
+        if not getattr(conv, "bot_active", True):
+            return {"sent": False, "reason": "agent_took_over"}
+
+        conv_id = conv.id
+
+    # Send via WhatsApp Cloud API
+    from app.services.messaging import send_whatsapp as _send_wa
+    sent = await _send_wa(ts.whatsapp_phone_id, ts.whatsapp_access_token, phone_normalized, payload.content)
+
+    if sent and conv_id:
+        with tenant_db_session(tenant.schema_name) as tdb:
+            msg = Message(
+                conversation_id=conv_id,
+                sender_type="bot",
+                content=payload.content,
+                timestamp=datetime.utcnow(),
+            )
+            tdb.add(msg)
+            conv = tdb.query(Conversation).filter(Conversation.id == conv_id).first()
+            if conv:
+                conv.last_message = f"[FollowUp] {payload.content[:80]}"
+                conv.updated_at = datetime.utcnow()
+            tdb.commit()
+
+    return {"sent": sent, "logged": sent}
+
+
+# ── Admin Landing Content (JWT auth, superuser only) ─────────────────────────
+
+LANDING_CONTENT_FILE = "/app/uploads/landing_content.json"
+STATIC_DIR = "/app/uploads"
+
+def _require_superuser(db: Session = Depends(get_db), authorization: str = Header(...)):
+    token = authorization.replace("Bearer ", "")
+    try:
+        payload = _security.decode_token(token)
+        email = payload.get("sub")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Token inválido")
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado")
+    return user
+
+
+@router.get("/landing-content")
+def get_landing_content(_user=Depends(_require_superuser)):
+    if os.path.exists(LANDING_CONTENT_FILE):
+        with open(LANDING_CONTENT_FILE) as f:
+            return json.load(f)
+    return {}
+
+
+@router.post("/landing-content")
+def save_landing_content(data: dict, _user=Depends(_require_superuser)):
+    os.makedirs(os.path.dirname(LANDING_CONTENT_FILE), exist_ok=True)
+    with open(LANDING_CONTENT_FILE, "w") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return {"ok": True}
+
+
+@router.post("/upload-asset")
+async def upload_asset(
+    file: UploadFile = File(...),
+    dest: str = Form(...),
+    _user=Depends(_require_superuser),
+):
+    # Sanitize dest to prevent path traversal
+    dest = dest.replace("..", "").lstrip("/")
+    out_path = os.path.join(STATIC_DIR, dest)
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    return {"ok": True, "path": f"/{dest}"}

@@ -1,350 +1,276 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import api from '@/lib/api'
 
-const C = {
-  base: '#0a0b0d', card: '#161a22', surface: '#111318',
-  border: 'rgba(255,255,255,0.07)', accent: '#00e5a0',
-  text: '#e2e8f0', muted: '#64748b', red: '#f87171',
-  yellow: '#fbbf24', blue: '#60a5fa',
-}
-
-interface Broadcast {
-  id: number
-  name: string
-  channel: string
-  message: string
-  status: string
-  sent_count: number
-  failed_count: number
-  filter_tag: string | null
-  created_at: string
-  sent_at: string | null
-}
-
-const CHANNEL_COLORS: Record<string, string> = {
-  whatsapp: '#25d366',
-  instagram: '#e1306c',
-  facebook: '#1877f2',
-}
-
-const CHANNEL_LABELS: Record<string, string> = {
-  whatsapp: 'WhatsApp',
-  instagram: 'Instagram',
-  facebook: 'Facebook',
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  draft: C.muted,
-  sending: C.yellow,
-  done: C.accent,
-  failed: C.red,
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  draft: 'Borrador',
-  sending: 'Enviando…',
-  done: 'Enviado',
-  failed: 'Fallido',
-}
-
-function Badge({ label, color }: { label: string; color: string }) {
+function Notif({ msg, ok }: { msg: string; ok: boolean }) {
   return (
-    <span style={{
-      fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99,
-      background: color + '22', color, textTransform: 'uppercase', letterSpacing: '0.05em',
-    }}>{label}</span>
+    <div style={{position:'fixed',bottom:24,right:24,zIndex:9999,padding:'12px 20px',borderRadius:12,
+      background:ok?'#059669':'#dc2626',color:'white',fontWeight:600,fontSize:13,
+      boxShadow:'0 4px 12px rgba(0,0,0,0.15)'}}>
+      {msg}
+    </div>
   )
 }
 
+const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  draft:   { label: 'Borrador', color: 'bg-gray-100 text-gray-600' },
+  sending: { label: 'Enviando', color: 'bg-blue-100 text-blue-700' },
+  sent:    { label: 'Enviado',  color: 'bg-green-100 text-green-700' },
+  done:    { label: 'Enviado',  color: 'bg-green-100 text-green-700' },
+  failed:  { label: 'Error',    color: 'bg-red-100 text-red-700' },
+}
+
+const CHANNEL_LABELS: Record<string, string> = {
+  whatsapp:  'WhatsApp',
+  instagram: 'Instagram',
+  facebook:  'Facebook',
+  email:     'Email',
+}
+
 export default function BroadcastsPage() {
-  const [broadcasts, setBroadcasts] = useState<Broadcast[]>([])
+  const [broadcasts, setBroadcasts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [sending, setSending] = useState<number | null>(null)
-  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
-
-  // Form state
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name: '', channel: 'whatsapp', message: '', filter_tag: '' })
-  const [saving, setSaving] = useState(false)
+  const [notif, setNotif] = useState<{ msg: string; ok: boolean } | null>(null)
+  const [sending, setSending] = useState<number | null>(null)
+  const [form, setForm] = useState({
+    name: '', message: '', channel: 'whatsapp',
+    filter_tag: '',
+    segment_tags: '', segment_min_score: '', segment_source: '',
+  })
+  const [formErr, setFormErr] = useState('')
+  const [formSaving, setFormSaving] = useState(false)
 
-  const showToast = (msg: string, ok = true) => {
-    setToast({ msg, ok })
-    setTimeout(() => setToast(null), 4000)
+  const notify = (msg: string, ok = true) => {
+    setNotif({ msg, ok })
+    setTimeout(() => setNotif(null), 3500)
   }
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
-      const { data } = await api.get('/broadcasts/')
-      setBroadcasts(data)
-    } catch {
-      showToast('Error al cargar broadcasts', false)
-    } finally {
-      setLoading(false)
-    }
-  }
+      const r = await api.get('/broadcasts')
+      setBroadcasts(r.data)
+    } catch { /* ignore */ }
+    finally { setLoading(false) }
+  }, [])
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [load])
 
-  const create = async () => {
-    if (!form.name || !form.message) return showToast('Nombre y mensaje son requeridos', false)
-    setSaving(true)
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.name.trim() || !form.message.trim()) { setFormErr('Nombre y mensaje son requeridos'); return }
+    setFormSaving(true); setFormErr('')
     try {
-      await api.post('/broadcasts/', {
+      await api.post('/broadcasts', {
         name: form.name,
-        channel: form.channel,
         message: form.message,
+        channel: form.channel,
         filter_tag: form.filter_tag || null,
+        segment_tags: form.segment_tags ? form.segment_tags.split(',').map((t: string) => t.trim()).filter(Boolean) : null,
+        segment_min_score: form.segment_min_score ? Number(form.segment_min_score) : null,
+        segment_source: form.segment_source || null,
       })
-      setForm({ name: '', channel: 'whatsapp', message: '', filter_tag: '' })
+      setForm({ name: '', message: '', channel: 'whatsapp', filter_tag: '', segment_tags: '', segment_min_score: '', segment_source: '' })
       setShowForm(false)
-      showToast('Campaña creada como borrador')
+      notify('Campaña creada')
       load()
-    } catch {
-      showToast('Error al crear campaña', false)
-    } finally {
-      setSaving(false)
-    }
+    } catch { setFormErr('Error al crear campaña') }
+    finally { setFormSaving(false) }
   }
 
-  const send = async (id: number) => {
-    if (!confirm('¿Enviar esta campaña a todos los contactos ahora?')) return
-    setSending(id)
+  const handleSend = async (b: any) => {
+    if (!window.confirm(`¿Enviar "${b.name}" a ${b.recipient_count ?? 'todos los'} contactos?`)) return
+    setSending(b.id)
     try {
-      await api.post(`/broadcasts/${id}/send`)
-      showToast('Enviando campaña en segundo plano…')
-      setTimeout(load, 3000)
-    } catch (e: any) {
-      showToast(e?.response?.data?.detail || 'Error al enviar', false)
-    } finally {
-      setSending(null)
-    }
-  }
-
-  const remove = async (id: number) => {
-    if (!confirm('¿Eliminar este borrador?')) return
-    try {
-      await api.delete(`/broadcasts/${id}`)
-      showToast('Eliminado')
+      await api.post(`/broadcasts/${b.id}/send`)
+      notify('Envío iniciado')
       load()
-    } catch (e: any) {
-      showToast(e?.response?.data?.detail || 'Error al eliminar', false)
-    }
+    } catch { notify('Error al enviar', false) }
+    finally { setSending(null) }
   }
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 12,
-    background: C.surface, border: `1px solid ${C.border}`, color: C.text,
-    outline: 'none', boxSizing: 'border-box',
+  const handleDelete = async (b: any) => {
+    if (!window.confirm('¿Eliminar esta campaña?')) return
+    try {
+      await api.delete(`/broadcasts/${b.id}`)
+      notify('Eliminada')
+      load()
+    } catch { notify('Error al eliminar', false) }
   }
 
   return (
-    <div style={{ background: C.base, minHeight: '100vh', padding: '32px 24px', fontFamily: 'inherit' }}>
+    <div className="min-h-screen bg-[#F8F7FF]">
+      {notif && <Notif msg={notif.msg} ok={notif.ok} />}
+
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+      <div className="bg-white border-b border-gray-100 px-8 py-5 flex items-center justify-between">
         <div>
-          <h1 style={{ color: C.text, fontSize: 20, fontWeight: 700, margin: 0 }}>Broadcasts Masivos</h1>
-          <p style={{ color: C.muted, fontSize: 13, margin: '4px 0 0' }}>
-            Envía campañas segmentadas a tus contactos por WhatsApp, Instagram o Facebook
-          </p>
+          <h1 className="text-xl font-bold text-gray-900">Broadcasts Masivos</h1>
+          <p className="text-sm text-gray-400 mt-0.5">Envía campañas segmentadas a tus contactos por WhatsApp, Instagram, Facebook o Email</p>
         </div>
-        <button
-          onClick={() => setShowForm(v => !v)}
-          style={{
-            background: C.accent, color: '#000', border: 'none', borderRadius: 8,
-            padding: '9px 18px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-          }}
-        >
+        <button onClick={() => setShowForm(!showForm)}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition">
           + Nueva campaña
         </button>
       </div>
 
-      {/* Create form */}
-      {showForm && (
-        <div style={{
-          background: C.card, border: `1px solid ${C.border}`, borderRadius: 12,
-          padding: 20, marginBottom: 24,
-        }}>
-          <h2 style={{ color: C.text, fontSize: 14, fontWeight: 600, margin: '0 0 16px' }}>Nueva campaña</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-            <div>
-              <div style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Nombre</div>
-              <input
-                style={inputStyle}
-                placeholder="Ej: Promo Mayo"
-                value={form.name}
-                onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-              />
-            </div>
-            <div>
-              <div style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Canal</div>
-              <select
-                style={{ ...inputStyle }}
-                value={form.channel}
-                onChange={e => setForm(p => ({ ...p, channel: e.target.value }))}
-              >
-                <option value="whatsapp">WhatsApp</option>
-                <option value="instagram">Instagram DM</option>
-                <option value="facebook">Facebook Messenger</option>
-              </select>
-            </div>
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Mensaje</div>
-            <textarea
-              style={{ ...inputStyle, resize: 'vertical' }}
-              rows={4}
-              placeholder="Escribe el mensaje que recibirán tus contactos…"
-              value={form.message}
-              onChange={e => setForm(p => ({ ...p, message: e.target.value }))}
-            />
-          </div>
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>
-              Filtro por campaña/etiqueta (opcional)
-            </div>
-            <input
-              style={inputStyle}
-              placeholder="Dejar vacío para enviar a todos los contactos"
-              value={form.filter_tag}
-              onChange={e => setForm(p => ({ ...p, filter_tag: e.target.value }))}
-            />
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={create}
-              disabled={saving}
-              style={{
-                background: C.accent, color: '#000', border: 'none', borderRadius: 8,
-                padding: '9px 18px', fontSize: 12, fontWeight: 700,
-                cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.5 : 1,
-              }}
-            >
-              {saving ? 'Guardando…' : 'Guardar borrador'}
-            </button>
-            <button
-              onClick={() => setShowForm(false)}
-              style={{
-                background: C.surface, color: C.text, border: `1px solid ${C.border}`,
-                borderRadius: 8, padding: '9px 18px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              }}
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
+      <div className="p-8 space-y-6">
 
-      {/* List */}
-      {loading ? (
-        <div style={{ color: C.muted, fontSize: 13, textAlign: 'center', paddingTop: 60 }}>Cargando…</div>
-      ) : broadcasts.length === 0 ? (
-        <div style={{
-          background: C.card, border: `1px solid ${C.border}`, borderRadius: 12,
-          padding: 48, textAlign: 'center',
-        }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>📣</div>
-          <div style={{ color: C.text, fontWeight: 600, marginBottom: 6 }}>Sin campañas todavía</div>
-          <div style={{ color: C.muted, fontSize: 13 }}>
-            Crea tu primera campaña masiva y llega a todos tus contactos en segundos.
-          </div>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {broadcasts.map(b => (
-            <div
-              key={b.id}
-              style={{
-                background: C.card, border: `1px solid ${C.border}`, borderRadius: 12,
-                padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16,
-              }}
-            >
-              {/* Channel dot */}
-              <div style={{
-                width: 36, height: 36, borderRadius: '50%',
-                background: (CHANNEL_COLORS[b.channel] || C.muted) + '22',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}>
-                <span style={{ fontSize: 16 }}>
-                  {b.channel === 'whatsapp' ? '💬' : b.channel === 'instagram' ? '📷' : '👥'}
-                </span>
+        {/* Create form */}
+        {showForm && (
+          <form onSubmit={handleCreate} className="bg-white rounded-2xl border border-gray-100 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm text-gray-800">Nueva campaña</h3>
+              <button type="button" onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+            </div>
+            {formErr && <p className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg">{formErr}</p>}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Nombre</label>
+                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="ej: Promo Abril 2026"
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
               </div>
-
-              {/* Info */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ color: C.text, fontWeight: 600, fontSize: 13 }}>{b.name}</span>
-                  <Badge
-                    label={CHANNEL_LABELS[b.channel] || b.channel}
-                    color={CHANNEL_COLORS[b.channel] || C.muted}
-                  />
-                  <Badge
-                    label={STATUS_LABELS[b.status] || b.status}
-                    color={STATUS_COLORS[b.status] || C.muted}
-                  />
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Canal</label>
+                <select value={form.channel} onChange={e => setForm(f => ({ ...f, channel: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm bg-white outline-none focus:border-violet-400">
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="instagram">Instagram DM</option>
+                  <option value="facebook">Facebook Messenger</option>
+                  <option value="email">Email</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">Mensaje</label>
+              <textarea value={form.message} onChange={e => setForm(f => ({ ...f, message: e.target.value }))}
+                rows={4} placeholder="Hola, tenemos una oferta especial para ti..."
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400 resize-none" />
+            </div>
+            <div className="border-t border-gray-100 pt-4">
+              <p className="text-xs font-semibold text-gray-500 mb-3 uppercase tracking-wide">Segmentación (opcional)</p>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-[10px] text-gray-400 mb-1">Etiqueta / Campaña</label>
+                  <input value={form.filter_tag} onChange={e => setForm(f => ({ ...f, filter_tag: e.target.value }))}
+                    placeholder="Dejar vacío = todos" className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
                 </div>
-                <div style={{
-                  color: C.muted, fontSize: 12,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>{b.message}</div>
-                {b.status !== 'draft' && (
-                  <div style={{ color: C.muted, fontSize: 11, marginTop: 4 }}>
-                    ✓ {b.sent_count} enviados · ✗ {b.failed_count} fallidos
-                    {b.sent_at && ` · ${new Date(b.sent_at).toLocaleString('es-CL')}`}
-                  </div>
-                )}
+                <div>
+                  <label className="block text-[10px] text-gray-400 mb-1">Tags (coma separados)</label>
+                  <input value={form.segment_tags} onChange={e => setForm(f => ({ ...f, segment_tags: e.target.value }))}
+                    placeholder="vip, cliente" className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-gray-400 mb-1">Score mínimo</label>
+                  <input type="number" min={0} max={100} value={form.segment_min_score}
+                    onChange={e => setForm(f => ({ ...f, segment_min_score: e.target.value }))}
+                    placeholder="ej: 50" className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:border-violet-400" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-gray-400 mb-1">Canal de origen</label>
+                  <select value={form.segment_source} onChange={e => setForm(f => ({ ...f, segment_source: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm bg-white outline-none focus:border-violet-400">
+                    <option value="">Todos</option>
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="webchat">Web Chat</option>
+                    <option value="instagram">Instagram</option>
+                    <option value="facebook">Facebook</option>
+                  </select>
+                </div>
               </div>
+            </div>
+            <div className="flex justify-end">
+              <button type="submit" disabled={formSaving}
+                className="px-5 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition disabled:opacity-50">
+                {formSaving ? 'Creando...' : 'Crear campaña'}
+              </button>
+            </div>
+          </form>
+        )}
 
-              {/* Actions */}
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                {b.status === 'draft' && (
-                  <>
-                    <button
-                      onClick={() => send(b.id)}
-                      disabled={sending === b.id}
-                      style={{
-                        background: C.accent + '22', color: C.accent, border: `1px solid ${C.accent}44`,
-                        borderRadius: 7, padding: '6px 14px', fontSize: 11, fontWeight: 700,
-                        cursor: sending === b.id ? 'not-allowed' : 'pointer',
-                        opacity: sending === b.id ? 0.5 : 1,
-                      }}
-                    >
-                      {sending === b.id ? 'Enviando…' : '▶ Enviar ahora'}
-                    </button>
-                    <button
-                      onClick={() => remove(b.id)}
-                      style={{
-                        background: C.red + '11', color: C.red, border: `1px solid ${C.red}33`,
-                        borderRadius: 7, padding: '6px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                      }}
-                    >
+        {/* Stats */}
+        {broadcasts.length > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              { label: 'Total campañas', value: broadcasts.length },
+              { label: 'Enviadas', value: broadcasts.filter(b => b.status === 'sent' || b.status === 'done').length },
+              { label: 'Contactos alcanzados', value: broadcasts.reduce((s, b) => s + (b.sent_count || 0), 0) },
+              { label: 'En borrador', value: broadcasts.filter(b => b.status === 'draft').length },
+            ].map(s => (
+              <div key={s.label} className="bg-white rounded-2xl border border-gray-100 p-4">
+                <div className="text-2xl font-bold text-violet-700">{s.value.toLocaleString()}</div>
+                <div className="text-xs text-gray-400 mt-0.5">{s.label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* List */}
+        {loading ? (
+          <div className="flex justify-center py-12 text-gray-400 text-sm">Cargando...</div>
+        ) : broadcasts.length === 0 ? (
+          <div className="text-center py-16 text-gray-400">
+            <div className="text-5xl mb-4 opacity-30">📢</div>
+            <p className="font-semibold text-gray-600">Sin campañas aún</p>
+            <p className="text-sm mt-1">Crea tu primera campaña masiva y llega a todos tus contactos en segundos.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {broadcasts.map((b) => {
+              const cfg = STATUS_LABELS[b.status] || STATUS_LABELS.draft
+              const segTags: string[] = (() => { try { return JSON.parse(b.segment_tags || '[]') } catch { return [] } })()
+              return (
+                <div key={b.id} className="bg-white rounded-2xl border border-gray-100 p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${cfg.color}`}>{cfg.label}</span>
+                        <span className="text-[10px] text-gray-400 capitalize">{CHANNEL_LABELS[b.channel] || b.channel}</span>
+                        {b.filter_tag && (
+                          <span className="text-[10px] px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full">{b.filter_tag}</span>
+                        )}
+                      </div>
+                      <h3 className="font-semibold text-gray-900 text-sm">{b.name}</h3>
+                      <p className="text-xs text-gray-500 mt-1 line-clamp-2">{b.message}</p>
+                    </div>
+                    <div className="flex-shrink-0 text-right text-xs text-gray-500">
+                      <div>{b.sent_count || 0} / {b.recipient_count || '—'} enviados</div>
+                      {b.failed_count > 0 && <div className="text-red-400">{b.failed_count} fallidos</div>}
+                      {b.sent_at && <div className="text-[10px] text-gray-400 mt-0.5">{new Date(b.sent_at).toLocaleDateString('es-CL')}</div>}
+                    </div>
+                  </div>
+                  {(segTags.length > 0 || b.segment_min_score || b.segment_source) && (
+                    <div className="mt-3 flex gap-2 flex-wrap">
+                      {segTags.map((t: string) => (
+                        <span key={t} className="text-[10px] px-2 py-0.5 bg-violet-50 text-violet-600 rounded-full">#{t}</span>
+                      ))}
+                      {b.segment_min_score && <span className="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full">Score ≥ {b.segment_min_score}</span>}
+                      {b.segment_source && <span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">{b.segment_source}</span>}
+                    </div>
+                  )}
+                  <div className="mt-3 pt-3 border-t border-gray-50 flex gap-2">
+                    {b.status === 'draft' && (
+                      <button onClick={() => handleSend(b)} disabled={sending === b.id}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-violet-600 text-white hover:bg-violet-700 transition disabled:opacity-50">
+                        {sending === b.id ? 'Enviando...' : '▶ Enviar ahora'}
+                      </button>
+                    )}
+                    {b.status === 'sending' && (
+                      <span className="text-xs text-blue-600 font-semibold px-3 py-1.5">Enviando…</span>
+                    )}
+                    <button onClick={() => handleDelete(b)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition">
                       Eliminar
                     </button>
-                  </>
-                )}
-                {b.status === 'sending' && (
-                  <span style={{ color: C.yellow, fontSize: 12, fontWeight: 600 }}>Enviando…</span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
-          padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-          background: toast.ok ? C.accent + '18' : C.red + '18',
-          color: toast.ok ? C.accent : C.red,
-          border: `1px solid ${toast.ok ? C.accent : C.red}44`,
-          boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
-        }}>
-          {toast.ok ? '✓' : '✗'} {toast.msg}
-        </div>
-      )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

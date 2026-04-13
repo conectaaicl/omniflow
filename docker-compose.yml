@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: omniflow_db
     restart: always
     environment:
@@ -57,6 +57,17 @@ services:
       - SUPERADMIN_PASSWORD=${SUPERADMIN_PASSWORD}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - FROM_EMAIL=${FROM_EMAIL}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - META_APP_ID=${META_APP_ID}
+      - META_APP_SECRET=${META_APP_SECRET}
+      - META_WEBHOOK_SECRET=${META_WEBHOOK_SECRET}
+      - N8N_API_KEY=${N8N_API_KEY}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - MAILSAAS_URL=${MAILSAAS_URL}
+      - MAILSAAS_API_KEY=${MAILSAAS_API_KEY}
+      - N8N_URL=${N8N_URL}
+    volumes:
+      - /var/www/omniflow/uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -76,6 +87,8 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+        - NEXT_PUBLIC_META_APP_ID=${NEXT_PUBLIC_META_APP_ID:-}
+        - NEXT_PUBLIC_META_CONFIG_ID=${NEXT_PUBLIC_META_CONFIG_ID:-}
     container_name: omniflow_frontend
     restart: always
     ports:

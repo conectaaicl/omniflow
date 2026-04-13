@@ -11,7 +11,10 @@
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [0, 0],
+      "position": [
+        0,
+        0
+      ],
       "id": "wa-verify-get",
       "name": "🔐 Verificación Meta (GET)",
       "webhookId": "wa-verify-001"
@@ -24,7 +27,10 @@
       },
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [280, 0],
+      "position": [
+        280,
+        0
+      ],
       "id": "respond-challenge",
       "name": "✅ Responder hub.challenge"
     },
@@ -37,7 +43,10 @@
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [0, 400],
+      "position": [
+        0,
+        400
+      ],
       "id": "wa-post",
       "name": "📱 Recibir Mensaje WhatsApp",
       "webhookId": "wa-messages-001"
@@ -50,20 +59,30 @@
       },
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [280, 240],
+      "position": [
+        280,
+        240
+      ],
       "id": "respond-200",
       "name": "✅ Responder 200 a Meta"
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
           "conditions": [
             {
               "id": "cond-has-msg",
               "leftValue": "={{ $json.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.type }}",
               "rightValue": "text",
-              "operator": { "type": "string", "operation": "equals" }
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
@@ -71,7 +90,10 @@
       },
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [280, 560],
+      "position": [
+        280,
+        560
+      ],
       "id": "if-is-text",
       "name": "🔍 ¿Es mensaje de texto?"
     },
@@ -79,18 +101,46 @@
       "parameters": {
         "assignments": {
           "assignments": [
-            { "id": "1", "name": "phone",           "value": "={{ $json.body.entry[0].changes[0].value.messages[0].from }}", "type": "string" },
-            { "id": "2", "name": "message",         "value": "={{ $json.body.entry[0].changes[0].value.messages[0].text.body }}", "type": "string" },
-            { "id": "3", "name": "phone_number_id", "value": "={{ $json.body.entry[0].changes[0].value.metadata.phone_number_id }}", "type": "string" },
-            { "id": "4", "name": "wamid",           "value": "={{ $json.body.entry[0].changes[0].value.messages[0].id }}", "type": "string" },
-            { "id": "5", "name": "contact_name",    "value": "={{ $json.body.entry[0].changes[0].value.contacts?.[0]?.profile?.name || 'Cliente WhatsApp' }}", "type": "string" }
+            {
+              "id": "1",
+              "name": "phone",
+              "value": "={{ $json.body.entry[0].changes[0].value.messages[0].from }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "message",
+              "value": "={{ $json.body.entry[0].changes[0].value.messages[0].text.body }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "phone_number_id",
+              "value": "={{ $json.body.entry[0].changes[0].value.metadata.phone_number_id }}",
+              "type": "string"
+            },
+            {
+              "id": "4",
+              "name": "wamid",
+              "value": "={{ $json.body.entry[0].changes[0].value.messages[0].id }}",
+              "type": "string"
+            },
+            {
+              "id": "5",
+              "name": "contact_name",
+              "value": "={{ $json.body.entry[0].changes[0].value.contacts?.[0]?.profile?.name || 'Cliente WhatsApp' }}",
+              "type": "string"
+            }
           ]
         },
         "options": {}
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [560, 560],
+      "position": [
+        560,
+        560
+      ],
       "id": "extract-fields",
       "name": "📋 Extraer Datos del Mensaje"
     },
@@ -101,25 +151,40 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "X-API-Secret", "value": "n8n_omniflow_bb381df03a4fa5e2706c0e11fd468468" }
+            {
+              "name": "X-API-Secret",
+              "value": "n8n_omniflow_bb381df03a4fa5e2706c0e11fd468468"
+            }
           ]
         },
-        "options": { "response": { "response": { "responseFormat": "json" } } }
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [840, 560],
+      "position": [
+        840,
+        560
+      ],
       "id": "fetch-ai-config",
       "name": "⚙️ Cargar Config IA desde OSW",
       "continueOnFail": true
     },
     {
       "parameters": {
-        "jsCode": "// Merge tenant config response with defaults\nconst apiSecret = 'n8n_omniflow_bb381df03a4fa5e2706c0e11fd468468';\nconst baseUrl = 'https://osw.conectaai.cl/api/v1';\nconst extracted = $('📋 Extraer Datos del Mensaje').item.json;\nconst cfg = $input.item.json; // Response from HTTP Request or error object\n\nconst subdomain = cfg.subdomain || 'osw';\nconst waToken = cfg.whatsapp_token || null;\nconst systemPrompt = cfg.system_prompt || 'Eres un asistente virtual amable. Responde en español.';\nconst aiProvider = cfg.ai_provider || 'groq';\nconst aiModel = cfg.ai_model || 'llama-3.3-70b-versatile';\n\nreturn [{\n  json: {\n    ...extracted,\n    subdomain,\n    whatsapp_token: waToken,\n    system_prompt: systemPrompt,\n    ai_provider: aiProvider,\n    ai_model: aiModel,\n    api_secret: apiSecret,\n    base_url: baseUrl,\n    has_token: !!(waToken),\n  }\n}];"
+        "jsCode": "// Merge tenant config response with defaults\nconst apiSecret = 'n8n_omniflow_bb381df03a4fa5e2706c0e11fd468468';\nconst baseUrl = 'https://osw.conectaai.cl/api/v1';\nconst extracted = $('📋 Extraer Datos del Mensaje').item.json;\nconst cfg = $input.item.json; // Response from HTTP Request or error object\n\nconst subdomain = cfg.subdomain || 'osw';\nconst waToken = cfg.whatsapp_token || null;\nconst systemPrompt = cfg.system_prompt || 'Eres un asistente virtual amable. Responde en español.';\nconst aiProvider = cfg.ai_provider || 'groq';\nconst aiModel = cfg.ai_model || 'llama-3.3-70b-versatile';\n\nreturn [{\n  json: {\n    ...extracted,\n    subdomain,\n    whatsapp_token: waToken,\n    system_prompt: systemPrompt,\n    ai_provider: aiProvider,\n    ai_model: aiModel,\n    api_secret: apiSecret,\n    base_url: baseUrl,\n    has_token: !!(waToken),\n    tenant_id: cfg.tenant_id || null,\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1060, 560],
+      "position": [
+        1060,
+        560
+      ],
       "id": "merge-config",
       "name": "⚙️ Merge Config"
     },
@@ -130,8 +195,14 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "X-API-Secret", "value": "n8n_omniflow_bb381df03a4fa5e2706c0e11fd468468" },
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "X-API-Secret",
+              "value": "n8n_omniflow_bb381df03a4fa5e2706c0e11fd468468"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -141,7 +212,10 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1280, 760],
+      "position": [
+        1280,
+        760
+      ],
       "id": "upsert-contact",
       "name": "👤 Registrar Contacto WA",
       "continueOnFail": true
@@ -152,20 +226,30 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1280, 560],
+      "position": [
+        1840,
+        340
+      ],
       "id": "get-history",
       "name": "📚 Cargar Historial (Memoria)"
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
           "conditions": [
             {
               "id": "cond-provider",
               "leftValue": "={{ $json.ai_provider }}",
               "rightValue": "groq",
-              "operator": { "type": "string", "operation": "equals" }
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
@@ -173,7 +257,10 @@
       },
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1560, 560],
+      "position": [
+        2120,
+        340
+      ],
       "id": "switch-provider",
       "name": "🔀 Seleccionar Proveedor IA"
     },
@@ -190,11 +277,17 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1840, 400],
+      "position": [
+        2400,
+        180
+      ],
       "id": "call-openai",
       "name": "🤖 OpenAI",
       "credentials": {
-        "openAiApi": { "id": "evBQV5HEn51mwT8u", "name": "OpenAi account" }
+        "openAiApi": {
+          "id": "evBQV5HEn51mwT8u",
+          "name": "OpenAi account"
+        }
       }
     },
     {
@@ -210,36 +303,105 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1840, 720],
+      "position": [
+        2400,
+        500
+      ],
       "id": "call-groq",
       "name": "⚡ Groq (Llama)",
       "credentials": {
-        "groqApi": { "id": "CcugLe8HO9m5mbSc", "name": "Groq account" }
+        "groqApi": {
+          "id": "CcugLe8HO9m5mbSc",
+          "name": "Groq account"
+        }
       }
     },
     {
       "parameters": {
         "assignments": {
           "assignments": [
-            { "id": "1",  "name": "ai_response",     "value": "={{ $json.choices[0].message.content }}", "type": "string" },
-            { "id": "2",  "name": "phone",            "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.phone }}", "type": "string" },
-            { "id": "3",  "name": "phone_number_id",  "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.phone_number_id }}", "type": "string" },
-            { "id": "4",  "name": "wamid",            "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.wamid }}", "type": "string" },
-            { "id": "5",  "name": "user_message",     "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.message }}", "type": "string" },
-            { "id": "6",  "name": "subdomain",        "value": "={{ $('⚙️ Merge Config').item.json.subdomain }}", "type": "string" },
-            { "id": "7",  "name": "api_secret",       "value": "={{ $('⚙️ Merge Config').item.json.api_secret }}", "type": "string" },
-            { "id": "8",  "name": "whatsapp_token",   "value": "={{ $('⚙️ Merge Config').item.json.whatsapp_token }}", "type": "string" },
-            { "id": "9",  "name": "contact_name",     "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.contact_name }}", "type": "string" },
-            { "id": "10", "name": "base_url",         "value": "={{ $('⚙️ Merge Config').item.json.base_url || 'https://osw.conectaai.cl/api/v1' }}", "type": "string" },
-            { "id": "11", "name": "ai_model",         "value": "={{ $('⚙️ Merge Config').item.json.ai_model }}", "type": "string" },
-            { "id": "12", "name": "ai_provider",      "value": "={{ $('⚙️ Merge Config').item.json.ai_provider }}", "type": "string" }
+            {
+              "id": "1",
+              "name": "ai_response",
+              "value": "={{ $json.choices[0].message.content }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "phone",
+              "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.phone }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "phone_number_id",
+              "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.phone_number_id }}",
+              "type": "string"
+            },
+            {
+              "id": "4",
+              "name": "wamid",
+              "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.wamid }}",
+              "type": "string"
+            },
+            {
+              "id": "5",
+              "name": "user_message",
+              "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.message }}",
+              "type": "string"
+            },
+            {
+              "id": "6",
+              "name": "subdomain",
+              "value": "={{ $('⚙️ Merge Config').item.json.subdomain }}",
+              "type": "string"
+            },
+            {
+              "id": "7",
+              "name": "api_secret",
+              "value": "={{ $('⚙️ Merge Config').item.json.api_secret }}",
+              "type": "string"
+            },
+            {
+              "id": "8",
+              "name": "whatsapp_token",
+              "value": "={{ $('⚙️ Merge Config').item.json.whatsapp_token }}",
+              "type": "string"
+            },
+            {
+              "id": "9",
+              "name": "contact_name",
+              "value": "={{ $('📋 Extraer Datos del Mensaje').item.json.contact_name }}",
+              "type": "string"
+            },
+            {
+              "id": "10",
+              "name": "base_url",
+              "value": "={{ $('⚙️ Merge Config').item.json.base_url || 'https://osw.conectaai.cl/api/v1' }}",
+              "type": "string"
+            },
+            {
+              "id": "11",
+              "name": "ai_model",
+              "value": "={{ $('⚙️ Merge Config').item.json.ai_model }}",
+              "type": "string"
+            },
+            {
+              "id": "12",
+              "name": "ai_provider",
+              "value": "={{ $('⚙️ Merge Config').item.json.ai_provider }}",
+              "type": "string"
+            }
           ]
         },
         "options": {}
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [2120, 560],
+      "position": [
+        2680,
+        340
+      ],
       "id": "extract-response",
       "name": "💬 Extraer Respuesta IA"
     },
@@ -249,7 +411,10 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2400, 560],
+      "position": [
+        2960,
+        340
+      ],
       "id": "save-history",
       "name": "💾 Guardar en Memoria"
     },
@@ -259,7 +424,10 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2680, 560],
+      "position": [
+        3240,
+        340
+      ],
       "id": "detect-action",
       "name": "🎯 Detectar Acción"
     },
@@ -270,8 +438,14 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Authorization", "value": "=Bearer {{ $json.whatsapp_token }}" },
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.whatsapp_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -281,7 +455,10 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2960, 560],
+      "position": [
+        3520,
+        340
+      ],
       "id": "send-whatsapp",
       "name": "📤 Enviar Respuesta WhatsApp",
       "continueOnFail": true
@@ -293,8 +470,14 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "X-API-Secret", "value": "n8n_omniflow_bb381df03a4fa5e2706c0e11fd468468" },
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "X-API-Secret",
+              "value": "n8n_omniflow_bb381df03a4fa5e2706c0e11fd468468"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -304,68 +487,277 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [3240, 560],
+      "position": [
+        3800,
+        340
+      ],
       "id": "log-crm",
       "name": "🗂️ Registrar en OmniFlow CRM",
       "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://osw.conectaai.cl/api/v1/internal/knowledge-search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "tenant_id",
+              "value": "={{ $json.tenant_id }}"
+            },
+            {
+              "name": "q",
+              "value": "={{ $json.message }}"
+            },
+            {
+              "name": "top_k",
+              "value": "3"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Internal-Secret",
+              "value": "n8n_omniflow_bb381df03a4fa5e2706c0e11fd468468"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        },
+        "onError": "continueErrorOutput"
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1280,
+        340
+      ],
+      "id": "knowledge-search",
+      "name": "KB: Buscar Conocimiento"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Inject knowledge context into system_prompt if found\nconst item = $('Merge Config').item.json;\nlet knowledgeContext = '';\ntry {\n  const kr = $input.item.json;\n  if (kr && kr.found > 0 && kr.context) {\n    knowledgeContext = kr.context;\n  }\n} catch(e) {}\n\nlet enrichedPrompt = item.system_prompt;\nif (knowledgeContext) {\n  enrichedPrompt = item.system_prompt +\n    '\\n\\n--- CONTEXTO DE NEGOCIO RELEVANTE ---\\n' +\n    knowledgeContext +\n    '\\n--- FIN CONTEXTO ---\\n\\nUsa este contexto cuando sea relevante.';\n}\n\nreturn [{ json: { ...item, system_prompt: enrichedPrompt, knowledge_found: !!knowledgeContext } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        340
+      ],
+      "id": "merge-knowledge",
+      "name": "IA: Enriquecer con Conocimiento"
     }
   ],
   "connections": {
     "🔐 Verificación Meta (GET)": {
-      "main": [[ { "node": "✅ Responder hub.challenge", "type": "main", "index": 0 } ]]
+      "main": [
+        [
+          {
+            "node": "✅ Responder hub.challenge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "📱 Recibir Mensaje WhatsApp": {
       "main": [
         [
-          { "node": "✅ Responder 200 a Meta", "type": "main", "index": 0 },
-          { "node": "🔍 ¿Es mensaje de texto?", "type": "main", "index": 0 }
+          {
+            "node": "✅ Responder 200 a Meta",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "🔍 ¿Es mensaje de texto?",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
     "🔍 ¿Es mensaje de texto?": {
       "main": [
-        [ { "node": "📋 Extraer Datos del Mensaje", "type": "main", "index": 0 } ],
+        [
+          {
+            "node": "📋 Extraer Datos del Mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ],
         []
       ]
     },
     "📋 Extraer Datos del Mensaje": {
-      "main": [[ { "node": "⚙️ Cargar Config IA desde OSW", "type": "main", "index": 0 } ]]
+      "main": [
+        [
+          {
+            "node": "⚙️ Cargar Config IA desde OSW",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "⚙️ Cargar Config IA desde OSW": {
-      "main": [[ { "node": "⚙️ Merge Config", "type": "main", "index": 0 } ]]
+      "main": [
+        [
+          {
+            "node": "⚙️ Merge Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "⚙️ Merge Config": {
-      "main": [[
-        { "node": "📚 Cargar Historial (Memoria)", "type": "main", "index": 0 },
-        { "node": "👤 Registrar Contacto WA", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "👤 Registrar Contacto WA",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "KB: Buscar Conocimiento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "📚 Cargar Historial (Memoria)": {
-      "main": [[ { "node": "🔀 Seleccionar Proveedor IA", "type": "main", "index": 0 } ]]
+      "main": [
+        [
+          {
+            "node": "🔀 Seleccionar Proveedor IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "🔀 Seleccionar Proveedor IA": {
       "main": [
-        [ { "node": "⚡ Groq (Llama)", "type": "main", "index": 0 } ],
-        [ { "node": "🤖 OpenAI", "type": "main", "index": 0 } ]
+        [
+          {
+            "node": "⚡ Groq (Llama)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "🤖 OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "🤖 OpenAI": {
-      "main": [[ { "node": "💬 Extraer Respuesta IA", "type": "main", "index": 0 } ]]
+      "main": [
+        [
+          {
+            "node": "💬 Extraer Respuesta IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "⚡ Groq (Llama)": {
-      "main": [[ { "node": "💬 Extraer Respuesta IA", "type": "main", "index": 0 } ]]
+      "main": [
+        [
+          {
+            "node": "💬 Extraer Respuesta IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "💬 Extraer Respuesta IA": {
-      "main": [[ { "node": "💾 Guardar en Memoria", "type": "main", "index": 0 } ]]
+      "main": [
+        [
+          {
+            "node": "💾 Guardar en Memoria",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "💾 Guardar en Memoria": {
-      "main": [[ { "node": "🎯 Detectar Acción", "type": "main", "index": 0 } ]]
+      "main": [
+        [
+          {
+            "node": "🎯 Detectar Acción",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "🎯 Detectar Acción": {
-      "main": [[ { "node": "📤 Enviar Respuesta WhatsApp", "type": "main", "index": 0 } ]]
+      "main": [
+        [
+          {
+            "node": "📤 Enviar Respuesta WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "📤 Enviar Respuesta WhatsApp": {
-      "main": [[ { "node": "🗂️ Registrar en OmniFlow CRM", "type": "main", "index": 0 } ]]
+      "main": [
+        [
+          {
+            "node": "🗂️ Registrar en OmniFlow CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "KB: Buscar Conocimiento": {
+      "main": [
+        [
+          {
+            "node": "IA: Enriquecer con Conocimiento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IA: Enriquecer con Conocimiento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA: Enriquecer con Conocimiento": {
+      "main": [
+        [
+          {
+            "node": "📚 Cargar Historial (Memoria)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
