@@ -75,6 +75,7 @@ export default function DashboardPage() {
   const [loadingStats, setLoadingStats] = useState(true)
   const [greeting, setGreeting] = useState('Buenos días')
   const [userName, setUserName] = useState('')
+  const [whatsappConnected, setWhatsappConnected] = useState(false)
 
   useEffect(() => {
     const h = new Date().getHours()
@@ -100,6 +101,12 @@ export default function DashboardPage() {
     conversationsAPI.list()
       .then((r) => setConversations((r.data || []).slice(0, 5)))
       .catch(console.error)
+    // Check WhatsApp connection status
+    import('@/lib/api').then(({ default: api }) => {
+      api.get('/channels/status').then((r: any) => {
+        setWhatsappConnected(!!(r.data?.whatsapp?.connected))
+      }).catch(() => {})
+    })
   }, [])
 
   const pieData = sources.map((s) => ({ name: s.source, value: s.count }))
@@ -305,7 +312,7 @@ export default function DashboardPage() {
               { name: 'Base de datos', status: 'operational', latency: '~3ms', color: '#10b981' },
               { name: 'n8n Automatizaciones', status: 'operational', latency: 'n8n.conectaai.cl', color: '#10b981', href: 'https://n8n.conectaai.cl' },
               { name: 'Web Chat Widget', status: 'operational', latency: 'osw.conectaai.cl', color: '#10b981' },
-              { name: 'WhatsApp Webhook', status: 'pending', latency: 'Sin configurar', color: '#f59e0b', href: '/settings/integrations' },
+              { name: 'WhatsApp Webhook', status: whatsappConnected ? 'operational' : 'pending', latency: whatsappConnected ? 'Conectado' : 'Sin configurar', color: whatsappConnected ? '#10b981' : '#f59e0b', href: '/channels' },
             ].map(({ name, status, latency, color, href }) => (
               <div key={name} className="flex items-center justify-between py-2 border-b border-white/[0.03] last:border-0">
                 <div className="flex items-center gap-2.5">

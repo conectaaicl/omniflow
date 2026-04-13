@@ -161,6 +161,28 @@ async def forgot_password(payload: ForgotPasswordRequest, db: Session = Depends(
     return {"message": "Si el email está registrado, recibirás un correo con instrucciones."}
 
 
+# ── Switch tenant (superadmin only) ──────────────────────────────────────────
+
+@router.post("/switch-tenant/{tenant_id}", response_model=Token)
+def switch_tenant(
+    tenant_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(security.get_current_user),
+):
+    if not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail="Solo superadmins pueden cambiar de tenant")
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant no encontrado")
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    return {
+        "access_token": security.create_access_token(
+            current_user.id, tenant_id=tenant_id, expires_delta=access_token_expires
+        ),
+        "token_type": "bearer",
+    }
+
+
 # ── Reset password (public) ───────────────────────────────────────────────────
 
 @router.post("/reset-password")

@@ -48,6 +48,8 @@ export const authAPI = {
     api.post('/auth/forgot-password', { email }),
   resetPassword: (token: string, new_password: string) =>
     api.post('/auth/reset-password', { token, new_password }),
+  switchTenant: (tenantId: number) =>
+    api.post(`/auth/switch-tenant/${tenantId}`),
 }
 
 // ── Tenant ───────────────────────────────────────────────────
