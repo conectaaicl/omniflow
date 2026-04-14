@@ -103,6 +103,24 @@ function ChannelCard({
   )
 }
 
+// ─── WhatsApp Status Badge ────────────────────────────────────────────
+function WhatsAppStatusBadge({ apiStatus, quality }: { apiStatus?: string; quality?: string }) {
+  if (!apiStatus) return null
+  const isGreen = apiStatus === 'CONNECTED' && quality !== 'RED'
+  const isRed = apiStatus === 'BANNED' || apiStatus === 'FLAGGED' || quality === 'RED'
+  const color = isGreen ? '#22c55e' : isRed ? '#f87171' : '#fbbf24'
+  const label = apiStatus === 'CONNECTED' ? (quality === 'RED' ? 'Calidad baja' : 'Activo') :
+                apiStatus === 'PENDING' ? 'Pendiente' :
+                apiStatus === 'BANNED' ? 'Bloqueado' :
+                apiStatus === 'FLAGGED' ? 'Alerta' : apiStatus
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+      <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, boxShadow: `0 0 6px ${color}` }} />
+      <span style={{ fontSize: 11, color, fontWeight: 600 }}>{label}</span>
+    </div>
+  )
+}
+
 // ─── WhatsApp ─────────────────────────────────────────────────────────────────
 function WhatsAppCard({ status, onRefresh }: { status: any; onRefresh: () => void }) {
   const [tab, setTab] = useState<'signup' | 'manual'>('signup')
@@ -139,7 +157,14 @@ function WhatsAppCard({ status, onRefresh }: { status: any; onRefresh: () => voi
       async (response: any) => {
         if (response.authResponse?.code) {
           try {
-            const r = await api.post('/channels/whatsapp/embedded', { code: response.authResponse.code })
+            const sessionInfo = response.authResponse.sessionInfo || {}
+            const phone_number_id = sessionInfo.phoneNumberId || undefined
+            const waba_id = sessionInfo.wabaId || undefined
+            const r = await api.post('/channels/whatsapp/embedded-signup', {
+              code: response.authResponse.code,
+              ...(phone_number_id && { phone_number_id }),
+              ...(waba_id && { waba_id }),
+            })
             setMsg('\u2713 ' + r.data.message)
             onRefresh()
           } catch (e: any) {
@@ -188,9 +213,12 @@ function WhatsAppCard({ status, onRefresh }: { status: any; onRefresh: () => voi
   return (
     <ChannelCard icon="\ud83d\udcac" name="WhatsApp Business" desc="Mensajes, notificaciones y chatbot por WhatsApp" color="#25d366" connected={isConnected}>
       {isConnected && (
-        <div style={{ background: C.surface, borderRadius: 8, padding: '10px 14px', marginBottom: 4 }}>
-          <div style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase', marginBottom: 3 }}>N\u00famero</div>
-          <div style={{ fontSize: 12, fontFamily: 'monospace' }}>{status?.whatsapp?.phone_number || 'Configurado'}</div>
+        <div style={{ background: C.surface, borderRadius: 8, padding: '10px 14px', marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 10, color: C.muted, textTransform: 'uppercase', marginBottom: 3 }}>Número</div>
+            <div style={{ fontSize: 12, fontFamily: 'monospace' }}>{status?.whatsapp?.phone_number || 'Configurado'}</div>
+          </div>
+          <WhatsAppStatusBadge apiStatus={status?.whatsapp?.phone_api_status} quality={status?.whatsapp?.phone_quality} />
         </div>
       )}
       <div style={{ display: 'flex', gap: 6 }}>

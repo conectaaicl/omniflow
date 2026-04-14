@@ -291,7 +291,10 @@ async def get_whatsapp_templates(
     import httpx
     tenant = _get_tenant(db, current_user)
     s = tenant.settings
-    if not s or not s.whatsapp_access_token:
+    from app.services.encryption import safe_decrypt
+    access_token = safe_decrypt(getattr(s, "wa_token_encrypted", None)) if s else None
+    access_token = access_token or (s.whatsapp_access_token if s else None)
+    if not s or not access_token:
         raise HTTPException(status_code=400, detail="WhatsApp no configurado")
     waba_id = getattr(s, "waba_id", None)
     if not waba_id:
@@ -299,7 +302,7 @@ async def get_whatsapp_templates(
     async with httpx.AsyncClient(timeout=10) as client:
         r = await client.get(
             f"https://graph.facebook.com/v20.0/{waba_id}/message_templates",
-            params={"access_token": s.whatsapp_access_token, "limit": 50},
+            params={"access_token": access_token, "limit": 100},
         )
         data = r.json()
         if "data" not in data:
@@ -314,7 +317,6 @@ async def get_whatsapp_templates(
                 "components": t.get("components", []),
             }
             for t in data["data"]
-            if t.get("status") == "APPROVED"
         ]
 
 
@@ -334,7 +336,10 @@ async def send_whatsapp_template(
     import httpx
     tenant = _get_tenant(db, current_user)
     s = tenant.settings
-    if not s or not s.whatsapp_access_token or not s.whatsapp_phone_id:
+    from app.services.encryption import safe_decrypt
+    wa_token = safe_decrypt(getattr(s, "wa_token_encrypted", None)) if s else None
+    wa_token = wa_token or (s.whatsapp_access_token if s else None)
+    if not s or not wa_token or not s.whatsapp_phone_id:
         raise HTTPException(status_code=400, detail="WhatsApp no configurado")
 
     with tenant_db_session(tenant.schema_name) as tdb:
@@ -360,7 +365,7 @@ async def send_whatsapp_template(
             body["template"]["components"] = payload.components
         r = await client.post(
             f"https://graph.facebook.com/v20.0/{s.whatsapp_phone_id}/messages",
-            headers={"Authorization": f"Bearer {s.whatsapp_access_token}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {wa_token}", "Content-Type": "application/json"},
             json=body,
         )
         data = r.json()
@@ -382,6 +387,123 @@ async def send_whatsapp_template(
 
 
 # ── Import CSV contacts ───────────────────────────────────────────────────────
+
+
+class CreateTemplatePayload(BaseModel):
+    name: str
+    category: str  # MARKETING | UTILITY | AUTHENTICATION
+    language: str  # es | en_US | pt_BR …
+    header_text: Optional[str] = None
+    body_text: str
+    footer_text: Optional[str] = None
+    example_body_params: list = []
+
+
+@router.post("/whatsapp-templates")
+async def create_whatsapp_template(
+    payload: CreateTemplatePayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create a new template on the WABA via Meta Graph API."""
+    import httpx, re
+    from app.services.encryption import safe_decrypt
+    tenant = _get_tenant(db, current_user)
+    s = tenant.settings
+    access_token = safe_decrypt(getattr(s, "wa_token_encrypted", None)) if s else None
+    access_token = access_token or (s.whatsapp_access_token if s else None)
+    if not s or not access_token:
+        raise HTTPException(status_code=400, detail="WhatsApp no configurado")
+    waba_id = getattr(s, "waba_id", None)
+    if not waba_id:
+        raise HTTPException(status_code=400, detail="WABA ID no configurado")
+
+    # Validate name: lowercase, underscores only, no spaces
+    name = re.sub(r"[^a-z0-9_]", "_", payload.name.lower().strip())
+    if not name:
+        raise HTTPException(status_code=400, detail="Nombre de plantilla inválido")
+
+    components = []
+    if payload.header_text:
+        components.append({"type": "HEADER", "format": "TEXT", "text": payload.header_text})
+
+    body_component: dict = {"type": "BODY", "text": payload.body_text}
+    if payload.example_body_params:
+        body_component["example"] = {"body_text": [payload.example_body_params]}
+    components.append(body_component)
+
+    if payload.footer_text:
+        components.append({"type": "FOOTER", "text": payload.footer_text})
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.post(
+            f"https://graph.facebook.com/v20.0/{waba_id}/message_templates",
+            headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+            json={
+                "name": name,
+                "language": payload.language,
+                "category": payload.category,
+                "components": components,
+            },
+        )
+        data = r.json()
+
+    if "error" in data:
+        raise HTTPException(status_code=400, detail=data["error"].get("message", "Error al crear plantilla"))
+
+    return {"id": data.get("id"), "name": name, "status": data.get("status", "PENDING")}
+
+
+class SendToNumberPayload(BaseModel):
+    phone_number: str
+    template_name: str
+    language_code: str = "es"
+    components: list = []
+
+
+@router.post("/whatsapp-templates/send-to-number")
+async def send_template_to_number(
+    payload: SendToNumberPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Send a template directly to a phone number (no existing conversation required)."""
+    import httpx
+    from app.services.encryption import safe_decrypt
+    tenant = _get_tenant(db, current_user)
+    s = tenant.settings
+    wa_token = safe_decrypt(getattr(s, "wa_token_encrypted", None)) if s else None
+    wa_token = wa_token or (s.whatsapp_access_token if s else None)
+    if not s or not wa_token or not s.whatsapp_phone_id:
+        raise HTTPException(status_code=400, detail="WhatsApp no configurado")
+
+    phone = payload.phone_number.strip().lstrip("+")
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        body: dict = {
+            "messaging_product": "whatsapp",
+            "to": phone,
+            "type": "template",
+            "template": {
+                "name": payload.template_name,
+                "language": {"code": payload.language_code},
+            },
+        }
+        if payload.components:
+            body["template"]["components"] = payload.components
+
+        r = await client.post(
+            f"https://graph.facebook.com/v20.0/{s.whatsapp_phone_id}/messages",
+            headers={"Authorization": f"Bearer {wa_token}", "Content-Type": "application/json"},
+            json=body,
+        )
+        data = r.json()
+
+    if "messages" not in data:
+        raise HTTPException(status_code=400, detail=data.get("error", {}).get("message", "Error al enviar"))
+
+    return {"sent": True, "message_id": data["messages"][0].get("id")}
+
 
 @router.post("/contacts/import-csv")
 async def import_contacts_csv(

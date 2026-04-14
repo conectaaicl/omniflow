@@ -103,6 +103,12 @@ export default function ConversationsPage() {
   const [newCanned, setNewCanned] = useState({ shortcut: '', title: '', content: '' })
   const [cannedSuggestions, setCannedSuggestions] = useState<CannedResponse[]>([])
   const [sideTab, setSideTab] = useState<'info' | 'canned'>('info')
+  const [sentIds, setSentIds] = useState<Set<number>>(new Set())
+  const [showNewMsgModal, setShowNewMsgModal] = useState(false)
+  const [newMsgPhone, setNewMsgPhone] = useState('')
+  const [newMsgTemplate, setNewMsgTemplate] = useState('')
+  const [newMsgSending, setNewMsgSending] = useState(false)
+  const [newMsgMsg, setNewMsgMsg] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -210,6 +216,9 @@ export default function ConversationsPage() {
       setInput('')
       const r = await conversationsAPI.getMessages(selected.id)
       setMessages(r.data)
+      const _outgoing = r.data.filter((m: Message) => m.sender_type === 'human' || m.sender_type === 'agent')
+      const _lastSent = _outgoing[_outgoing.length - 1]
+      if (_lastSent) setSentIds(prev => { const n = new Set(prev); n.add(_lastSent.id); return n })
     } catch (e) { console.error(e) }
     finally { setSending(false) }
   }
@@ -309,6 +318,10 @@ export default function ConversationsPage() {
                 <Upload size={11} />
               </button>
               <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleImportCSV} />
+              <button onClick={() => { setNewMsgPhone(''); setNewMsgTemplate(''); setNewMsgMsg(''); setShowNewMsgModal(true) }} title="Nuevo mensaje"
+                style={{ padding: 5, borderRadius: 7, background: 'rgba(0,229,160,0.1)', border: 'none', cursor: 'pointer', color: '#00e5a0', display: 'flex' }}>
+                <Plus size={11} />
+              </button>
             </div>
           </div>
           {/* Search */}
@@ -510,7 +523,7 @@ export default function ConversationsPage() {
                         )}
                       </div>
                       <div style={{ fontSize: 9, color: '#334155', marginTop: 3, textAlign: isOut ? 'right' : 'left', fontFamily: 'monospace' }}>
-                        {formatTime(msg.timestamp)}
+                        {formatTime(msg.timestamp)}{isOut && sentIds.has(msg.id) && <span style={{ marginLeft: 3, color: '#00e5a0' }}>✓</span>}
                       </div>
                     </div>
                     {isOut && (
@@ -790,6 +803,58 @@ export default function ConversationsPage() {
           </div>
         </div>
       )}
+
+      {/* NEW MSG MODAL */}
+      {showNewMsgModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: '#161a22', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 24, width: '100%', maxWidth: 400, position: 'relative' }}>
+            <button onClick={() => setShowNewMsgModal(false)} style={{ position: 'absolute', top: 14, right: 14, background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 4 }}><X size={16} /></button>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 18 }}>Nuevo mensaje</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Número de teléfono *</div>
+                <input value={newMsgPhone} onChange={e => setNewMsgPhone(e.target.value)} placeholder="+56912345678"
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 12, background: '#111318', border: '1px solid rgba(255,255,255,0.07)', color: '#e2e8f0', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 5 }}>Plantilla aprobada *</div>
+                <select value={newMsgTemplate} onChange={e => setNewMsgTemplate(e.target.value)}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 12, background: '#111318', border: '1px solid rgba(255,255,255,0.07)', color: newMsgTemplate ? '#e2e8f0' : '#64748b', outline: 'none', boxSizing: 'border-box' }}>
+                  <option value="">Seleccionar plantilla...</option>
+                  {templates.filter(t => t.status === 'APPROVED').map(t => (
+                    <option key={t.id} value={t.name}>{t.name} ({t.language})</option>
+                  ))}
+                </select>
+                {templates.filter(t => t.status === 'APPROVED').length === 0 && !templatesLoading && (
+                  <div style={{ fontSize: 11, color: '#fbbf24', marginTop: 6 }}>Sin plantillas aprobadas. Crea una en /templates.</div>
+                )}
+              </div>
+              {newMsgMsg && (
+                <div style={{ fontSize: 12, padding: '8px 12px', borderRadius: 8,
+                  background: newMsgMsg.startsWith('✓') ? 'rgba(0,229,160,0.1)' : 'rgba(248,113,113,0.1)',
+                  color: newMsgMsg.startsWith('✓') ? '#00e5a0' : '#f87171',
+                  border: newMsgMsg.startsWith('✓') ? '1px solid #00e5a030' : '1px solid #f8717130' }}>{newMsgMsg}</div>
+              )}
+              <button
+                disabled={!newMsgPhone.trim() || !newMsgTemplate || newMsgSending}
+                onClick={async () => {
+                  setNewMsgSending(true); setNewMsgMsg('')
+                  try {
+                    await conversationsAPI.sendTemplateToNumber({ phone_number: newMsgPhone.trim(), template_name: newMsgTemplate, language_code: templates.find(t => t.name === newMsgTemplate)?.language || 'es' })
+                    setNewMsgMsg('✓ Mensaje enviado correctamente')
+                    loadConversations()
+                  } catch (e: any) {
+                    setNewMsgMsg('✗ ' + ((e as any).response?.data?.detail || (e as Error).message || 'Error al enviar'))
+                  } finally { setNewMsgSending(false) }
+                }}
+                style={{ padding: '10px 16px', background: !newMsgPhone.trim() || !newMsgTemplate || newMsgSending ? 'rgba(0,229,160,0.3)' : '#00e5a0', color: '#000', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: !newMsgPhone.trim() || !newMsgTemplate || newMsgSending ? 'not-allowed' : 'pointer' }}>
+                {newMsgSending ? 'Enviando...' : 'Enviar mensaje'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+
   )
 }

@@ -121,13 +121,22 @@ export default function DashboardShell({ children }: { children: React.ReactNode
         {/* Logo */}
         <div className={`h-14 border-b border-white/5 flex items-center flex-shrink-0 ${collapsed ? 'justify-center px-3' : 'px-5 gap-3'}`}>
           <Link href="/dashboard" className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #00e5a0, #00e5a099)', boxShadow: '0 0 20px #00e5a040' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-            {!collapsed && (
+            {branding?.settings?.logo_url ? (
+              <img
+                src={branding.settings.logo_url}
+                alt={branding.name || 'Logo'}
+                className="flex-shrink-0 object-contain"
+                style={{ height: collapsed ? 32 : 28, maxWidth: collapsed ? 40 : 120, borderRadius: 6 }}
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg, #00e5a0, #00e5a099)', boxShadow: '0 0 20px #00e5a040' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+            )}
+            {!collapsed && !branding?.settings?.logo_url && (
               <span className="text-[15px] font-bold truncate text-white">
                 {branding?.name || 'OmniFlow'}
               </span>

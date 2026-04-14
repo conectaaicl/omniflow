@@ -8,9 +8,10 @@ const api = axios.create({
 })
 
 // ── Request: attach JWT ──────────────────────────────────────
+// sessionStorage is per-tab (multi-tenant isolation); localStorage is fallback for normal login
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('omniflow_token')
+    const token = sessionStorage.getItem('omniflow_token') || localStorage.getItem('omniflow_token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -23,6 +24,7 @@ api.interceptors.response.use(
   (res) => res,
   (error) => {
     if (error.response?.status === 401 && typeof window !== 'undefined') {
+      sessionStorage.removeItem('omniflow_token')
       localStorage.removeItem('omniflow_token')
       localStorage.removeItem('omniflow_user')
       window.location.href = '/login'

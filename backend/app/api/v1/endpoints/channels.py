@@ -200,6 +200,24 @@ async def get_channel_status(
     s = _get_settings(db, current_user.tenant_id)
     wa_token = safe_decrypt(s.wa_token_encrypted) or s.whatsapp_access_token
 
+    # Fetch live phone number status from Meta if connected
+    phone_api_status = None
+    phone_quality = None
+    if wa_token and s.whatsapp_phone_id:
+        try:
+            import httpx as _httpx
+            async with _httpx.AsyncClient(timeout=5) as _client:
+                _r = await _client.get(
+                    f"https://graph.facebook.com/v20.0/{s.whatsapp_phone_id}",
+                    params={"fields": "status,quality_rating", "access_token": wa_token},
+                )
+                if _r.is_success:
+                    _d = _r.json()
+                    phone_api_status = _d.get("status")   # CONNECTED | PENDING | FLAGGED | BANNED
+                    phone_quality    = _d.get("quality_rating")  # GREEN | YELLOW | RED
+        except Exception:
+            pass
+
     return {
         "whatsapp": {
             "connected": bool(wa_token and s.whatsapp_phone_id),
@@ -207,6 +225,8 @@ async def get_channel_status(
             "phone_number_id": s.whatsapp_phone_id,
             "waba_id": s.waba_id,
             "number": s.whatsapp_number,
+            "phone_api_status": phone_api_status,
+            "phone_quality": phone_quality,
         },
         "instagram": {
             "connected": bool(s.instagram_access_token and s.instagram_page_id),
