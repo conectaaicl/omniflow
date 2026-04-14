@@ -27,6 +27,7 @@ const NAV_BASE: NavGroup[] = [
   {
     label: 'AUTOMATIZACIÓN',
     items: [
+      { href: '/templates', label: 'Plantillas WA', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg> },
       { href: '/broadcasts', label: 'Broadcasts', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg> },
       { href: '/automations', label: 'Automatizaciones', icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg> },
       { href: 'https://n8n.conectaai.cl', label: 'Editor n8n', external: true, icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M15 3h6v6M10 14L21 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg> },
@@ -135,14 +136,14 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       <aside className={`relative flex flex-col border-r border-white/5 bg-[#0a0a18] transition-all duration-300 ${collapsed ? 'w-[60px]' : 'w-64'}`}>
 
         {/* Logo */}
-        <div className={`h-14 border-b border-white/5 flex items-center flex-shrink-0 ${collapsed ? 'justify-center px-3' : 'px-5 gap-3'}`}>
-          <Link href="/dashboard" className="flex items-center gap-2.5 min-w-0">
+        <div className={`border-b border-white/5 flex items-center justify-center flex-shrink-0 ${collapsed ? 'h-14 px-2' : 'h-28 px-4'}`}>
+          <Link href="/dashboard" className="flex items-center justify-center w-full min-w-0">
             {branding?.settings?.logo_url ? (
               <img
                 src={branding.settings.logo_url}
                 alt={branding.name || 'Logo'}
-                className="flex-shrink-0 object-contain"
-                style={{ height: collapsed ? 32 : 28, maxWidth: collapsed ? 40 : 120, borderRadius: 6 }}
+                className="object-contain"
+                style={{ height: collapsed ? 32 : 88, maxWidth: collapsed ? 44 : 200 }}
               />
             ) : (
               <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -159,7 +160,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
             )}
           </Link>
           {!collapsed && (
-            <button onClick={() => setCollapsed(true)} className="ml-auto text-slate-700 hover:text-slate-400 transition-colors p-1">
+            <button onClick={() => setCollapsed(true)} className="absolute top-2 right-2 text-slate-700 hover:text-slate-400 transition-colors p-1">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </button>
           )}
