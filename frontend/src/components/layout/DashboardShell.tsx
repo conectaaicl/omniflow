@@ -68,7 +68,22 @@ export default function DashboardShell({ children }: { children: React.ReactNode
   const [time, setTime] = useState('')
 
   useEffect(() => {
-    const token = localStorage.getItem('omniflow_token')
+    // Handle ?sw=KEY handoff from superadmin "Entrar como tenant"
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      const swKey = params.get('sw')
+      if (swKey) {
+        const swToken = localStorage.getItem(swKey)
+        if (swToken) {
+          sessionStorage.setItem('omniflow_token', swToken)
+          localStorage.removeItem(swKey)
+          // Clean URL without reload
+          window.history.replaceState({}, '', window.location.pathname)
+        }
+      }
+    }
+    // sessionStorage is per-tab (multi-tenant isolation); localStorage is fallback for normal login
+    const token = sessionStorage.getItem('omniflow_token') || localStorage.getItem('omniflow_token')
     if (!token) { router.push('/login'); return }
     if (!decodeJwt(token)) { router.push('/login'); return }
     // Load from cache immediately for fast render
@@ -100,6 +115,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
   }, [])
 
   const handleLogout = useCallback(() => {
+    sessionStorage.removeItem('omniflow_token')
     localStorage.removeItem('omniflow_token')
     localStorage.removeItem('omniflow_user')
     router.push('/login')
